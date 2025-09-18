@@ -1,0 +1,41 @@
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #004080;
+  color: white;
+  padding: 10px 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.org-logo {
+  width: 40px;
+  height: 40px;
+}
+
+.page-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.header-right {
+  display: flex;
+  gap: 15px;
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: #cce0ff;
+}

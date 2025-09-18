@@ -1,0 +1,50 @@
+.actionable-insights {
+  background-color: white;
+  border-radius: 8px;
+  padding: 15px 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+.actionable-insights h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.insight-card {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px 15px;
+  background-color: #fafafa;
+}
+
+.insight-title {
+  margin: 0 0 6px 0;
+  font-weight: 700;
+}
+
+.insight-detail {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.view-details-button {
+  font-size: 0.9rem;
+  color: #007bff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.view-details-button:hover {
+  text-decoration: underline;
+}

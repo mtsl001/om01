@@ -1,0 +1,56 @@
+.kpi-cards-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+
+.kpi-card {
+  background-color: white;
+  border-radius: 8px;
+  padding: 15px 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  flex: 1;
+  cursor: default;
+  transition: box-shadow 0.3s ease;
+}
+
+.kpi-card.clickable {
+  cursor: pointer;
+}
+
+.kpi-card.clickable:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.kpi-title {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.kpi-trend {
+  font-size: 0.9rem;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.trend-arrow.up {
+  color: green;
+}
+
+.trend-arrow.down {
+  color: red;
+}
+
+.kpi-target {
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
