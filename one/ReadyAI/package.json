@@ -1,0 +1,313 @@
+// package.json
+{
+  "name": "readyai-personal-orchestrator",
+  "version": "1.0.0",
+  "description": "ReadyAI Personal AI Development Orchestrator - Transform any project idea into production-ready code through intelligent context management and AI-powered generation",
+  "main": "dist/apps/api/server.js",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others \"npm run dev:api\" \"npm run dev:extension\" \"npm run dev:ui\"",
+    "dev:api": "tsx watch apps/api/server.ts",
+    "dev:extension": "tsc -p apps/vscode/tsconfig.json --watch",
+    "dev:ui": "vite packages/ui --port 3000",
+    "build": "npm run build:packages && npm run build:apps",
+    "build:packages": "npm run build:foundation && npm run build:config && npm run build:logging && npm run build:filesystem && npm run build:ui",
+    "build:foundation": "tsc -p packages/foundation/tsconfig.json",
+    "build:config": "tsc -p packages/config/tsconfig.json",
+    "build:logging": "tsc -p packages/logging/tsconfig.json", 
+    "build:filesystem": "tsc -p packages/filesystem/tsconfig.json",
+    "build:ui": "vite build packages/ui",
+    "build:apps": "npm run build:api && npm run build:extension",
+    "build:api": "tsc -p apps/api/tsconfig.json",
+    "build:extension": "webpack --config apps/vscode/webpack.config.js --mode production",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest tests/integration --testTimeout=30000",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "lint:check": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "rimraf dist coverage node_modules/.cache",
+    "clean:deps": "rimraf node_modules package-lock.json && npm install",
+    "precommit": "lint-staged",
+    "prepare": "husky install",
+    "start": "node dist/apps/api/server.js",
+    "start:dev": "tsx apps/api/server.ts",
+    "package:extension": "vsce package",
+    "install:extension": "code --install-extension readyai-personal-orchestrator-*.vsix",
+    "db:generate": "tsx scripts/generate-schema.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "docker:build": "docker build -t readyai-orchestrator .",
+    "docker:run": "docker run -p 8000:8000 readyai-orchestrator",
+    "docs:generate": "typedoc --options typedoc.json",
+    "docs:serve": "http-server docs/generated -p 8080",
+    "validate:config": "tsx scripts/validate-config.ts",
+    "analyze:bundle": "webpack-bundle-analyzer dist/stats.json",
+    "health:check": "tsx scripts/health-check.ts"
+  },
+  "dependencies": {
+    "@types/uuid": "^9.0.7",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "http-proxy-middleware": "^2.0.6",
+    "jsonschema": "^1.4.1",
+    "lodash": "^4.17.21",
+    "mime-types": "^2.1.35",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2",
+    "yaml": "^2.3.4",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.5",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.8",
+    "@types/lodash": "^4.14.202",
+    "@types/mime-types": "^2.1.4",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.9.1",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@types/vscode": "^1.84.0",
+    "@types/ws": "^8.5.10",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "@vitejs/plugin-react": "^4.1.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jest": "^27.6.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "http-server": "^14.1.1",
+    "husky": "^8.0.3",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.1.0",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rimraf": "^5.0.5",
+    "ts-jest": "^29.1.1",
+    "tsx": "^4.1.4",
+    "typedoc": "^0.25.4",
+    "typescript": "^5.2.2",
+    "vite": "^4.5.0",
+    "vsce": "^2.22.0",
+    "webpack": "^5.89.0",
+    "webpack-bundle-analyzer": "^4.9.1",
+    "webpack-cli": "^5.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/readyai/personal-orchestrator.git"
+  },
+  "keywords": [
+    "ai",
+    "development",
+    "orchestrator",
+    "code-generation",
+    "vscode-extension",
+    "typescript",
+    "react",
+    "express",
+    "personal-ai",
+    "claude",
+    "gpt",
+    "productivity",
+    "automation",
+    "full-stack"
+  ],
+  "author": {
+    "name": "ReadyAI Development Team",
+    "email": "dev@readyai.dev",
+    "url": "https://readyai.dev"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/readyai/personal-orchestrator/issues"
+  },
+  "homepage": "https://readyai.dev",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist/**/*",
+    "packages/*/dist/**/*",
+    "apps/*/dist/**/*",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/packages",
+      "<rootDir>/apps",
+      "<rootDir>/tests"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.(ts|js)",
+      "**/*.(test|spec).(ts|js)"
+    ],
+    "collectCoverageFrom": [
+      "packages/**/*.{ts,tsx}",
+      "apps/**/*.{ts,tsx}",
+      "!**/*.d.ts",
+      "!**/node_modules/**",
+      "!**/dist/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.ts"
+    ],
+    "moduleNameMapping": {
+      "^@readyai/foundation/(.*)$": "<rootDir>/packages/foundation/$1",
+      "^@readyai/config/(.*)$": "<rootDir>/packages/config/$1",
+      "^@readyai/logging/(.*)$": "<rootDir>/packages/logging/$1",
+      "^@readyai/filesystem/(.*)$": "<rootDir>/packages/filesystem/$1",
+      "^@readyai/ui/(.*)$": "<rootDir>/packages/ui/$1"
+    }
+  },
+  "eslintConfig": {
+    "root": true,
+    "parser": "@typescript-eslint/parser",
+    "plugins": [
+      "@typescript-eslint",
+      "import",
+      "prettier",
+      "jest"
+    ],
+    "extends": [
+      "eslint:recommended",
+      "@typescript-eslint/recommended",
+      "prettier"
+    ],
+    "env": {
+      "node": true,
+      "browser": true,
+      "es2022": true,
+      "jest": true
+    },
+    "parserOptions": {
+      "ecmaVersion": 2022,
+      "sourceType": "module",
+      "project": "./tsconfig.json"
+    },
+    "rules": {
+      "@typescript-eslint/no-unused-vars": "error",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "@typescript-eslint/no-non-null-assertion": "warn",
+      "import/order": [
+        "error",
+        {
+          "groups": [
+            "builtin",
+            "external",
+            "internal",
+            "parent",
+            "sibling",
+            "index"
+          ],
+          "newlines-between": "always"
+        }
+      ],
+      "prettier/prettier": "error",
+      "no-console": "warn",
+      "prefer-const": "error"
+    },
+    "overrides": [
+      {
+        "files": [
+          "**/*.test.ts",
+          "**/*.spec.ts"
+        ],
+        "rules": {
+          "@typescript-eslint/no-explicit-any": "off"
+        }
+      }
+    ]
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": true,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "useTabs": false,
+    "bracketSpacing": true,
+    "arrowParens": "avoid",
+    "endOfLine": "lf"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "nodemonConfig": {
+    "watch": [
+      "apps/api",
+      "packages"
+    ],
+    "ext": "ts,js,json",
+    "ignore": [
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "node_modules",
+      "dist"
+    ],
+    "exec": "tsx apps/api/server.ts"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged",
+      "pre-push": "npm run test && npm run typecheck",
+      "commit-msg": "commitlint -E HUSKY_GIT_PARAMS"
+    }
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/readyai"
+  },
+  "volta": {
+    "node": "18.18.0",
+    "npm": "9.8.1"
+  }
+}
