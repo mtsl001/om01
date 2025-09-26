@@ -1,3 +1,5 @@
+// packages\config\services\ConfigService.ts
+
 /**
  * Configuration Service for ReadyAI Personal AI Development Orchestrator
  * 
@@ -39,7 +41,7 @@ import {
 	ConfigurationUpdateRequest,
 	ConfigurationBackup,
 	IConfigurationManager,
-	PHASE_CONFIGURATION_DEFAULTS,
+	DEFAULT_PHASE_CONFIGURATION,
 	CONFIG_SCHEMA_VERSION
 } from '../types/config';
 

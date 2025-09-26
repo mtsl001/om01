@@ -17,6 +17,7 @@
  */
 
 import { Request, Response, NextFunction, Router } from 'express'
+import { randomUUID } from 'crypto'
 import {
   UUID,
   ApiResponse,
@@ -273,7 +274,7 @@ export class ConfigController {
   private setupMiddleware(): void {
     // Request ID assignment for operation tracking
     this.router.use((req: ConfigRequest, res: Response, next: NextFunction) => {
-      req.operationId = crypto.randomUUID()
+      req.operationId = randomUUID() as UUID
       req.timestamp = new Date().toISOString()
       req.clientInfo = {
         userAgent: req.get('User-Agent'),

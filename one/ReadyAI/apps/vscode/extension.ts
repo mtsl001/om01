@@ -1,3 +1,5 @@
+// apps\vscode\extension.ts
+
 /**
  * ReadyAI VS Code Extension Entry Point
  * Main activation and lifecycle management for the ReadyAI Personal AI Development Orchestrator.

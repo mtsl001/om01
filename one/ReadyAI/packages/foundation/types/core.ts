@@ -6,7 +6,13 @@
  * and ensuring perfect consistency across all ReadyAI components.
  * 
  * Adapted from Cline's src/shared/api.ts with ReadyAI-specific extensions
+ * 
+ * @version 1.1.0 - Production Ready
+ * @author ReadyAI Development Team
  */
+
+// Import Node.js crypto for UUID generation
+import { randomUUID } from 'crypto'
 
 // =============================================================================
 // FOUNDATIONAL TYPES (ReadyAI Core Contracts)
@@ -525,6 +531,22 @@ export interface ValidationResult {
 }
 
 /**
+ * Validation error details with field-specific information
+ */
+export interface ValidationError {
+  /** Field name that failed validation */
+  field: string
+  /** Validation error message */
+  message: string
+  /** Invalid value */
+  value?: any
+  /** Error code for programmatic handling */
+  code?: string
+  /** Suggested fix */
+  suggestion?: string
+}
+
+/**
  * Quality metrics for project monitoring with trend analysis
  */
 export interface QualityMetrics {
@@ -590,22 +612,6 @@ export interface PaginatedResponse<T> {
 // =============================================================================
 
 /**
- * Validation error details with field-specific information
- */
-export interface ValidationError {
-  /** Field name that failed validation */
-  field: string
-  /** Validation error message */
-  message: string
-  /** Invalid value */
-  value?: any
-  /** Error code for programmatic handling */
-  code?: string
-  /** Suggested fix */
-  suggestion?: string
-}
-
-/**
  * Enhanced error class with Cline's proven error patterns
  */
 export class ReadyAIError extends Error {
@@ -619,6 +625,11 @@ export class ReadyAIError extends Error {
   ) {
     super(message)
     this.name = 'ReadyAIError'
+    
+    // Ensure stack trace points to caller, not this constructor
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, ReadyAIError)
+    }
   }
 
   /**
@@ -671,7 +682,7 @@ export function createApiResponse<T>(
     data,
     metadata: {
       timestamp: new Date().toISOString(),
-      requestId: crypto.randomUUID(),
+      requestId: randomUUID(),
       ...metadata
     }
   }
@@ -692,7 +703,8 @@ export function createApiError(
       message,
       code,
       statusCode,
-      details
+      details,
+      retryable: statusCode ? statusCode >= 500 || statusCode === 429 : false
     }
   }
 }
@@ -728,20 +740,193 @@ export async function wrapAsync<T>(
   }
 }
 
+/**
+ * Enhanced UUID generation with validation
+ */
+export function generateUUID(): UUID {
+  return randomUUID()
+}
+
+/**
+ * Validate UUID format
+ */
+export function isValidUUID(uuid: string): uuid is UUID {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
+/**
+ * Generate request ID for tracking
+ */
+export function generateRequestId(): string {
+  return `req_${randomUUID().replace(/-/g, '').substring(0, 16)}`
+}
+
+/**
+ * Create timestamp in ISO 8601 format
+ */
+export function createTimestamp(): string {
+  return new Date().toISOString()
+}
+
+// =============================================================================
+// STREAMING AND REAL-TIME TYPES
+// =============================================================================
+
+/**
+ * Streaming response for real-time updates
+ */
+export interface StreamingResponse<T> {
+  /** Stream identifier */
+  streamId: UUID
+  /** Event type */
+  event: 'data' | 'error' | 'complete' | 'heartbeat'
+  /** Event data */
+  data?: T
+  /** Error information (for error events) */
+  error?: {
+    message: string
+    code?: string
+  }
+  /** Sequence number for ordering */
+  sequence: number
+  /** Timestamp */
+  timestamp: string
+}
+
+/**
+ * Configuration for streaming operations
+ */
+export interface StreamingConfig {
+  /** Buffer size for streaming */
+  bufferSize: number
+  /** Heartbeat interval in milliseconds */
+  heartbeatInterval: number
+  /** Maximum connection time */
+  maxConnectionTime: number
+  /** Enable compression */
+  compression: boolean
+}
+
+// =============================================================================
+// CONFIGURATION TYPES
+// =============================================================================
+
+/**
+ * Environment configuration
+ */
+export interface EnvironmentConfig {
+  /** Current environment */
+  NODE_ENV: 'development' | 'production' | 'test'
+  /** Server port */
+  PORT: number
+  /** Database configuration */
+  DATABASE_URL?: string
+  /** API keys and secrets */
+  secrets: {
+    [key: string]: string
+  }
+  /** Feature flags */
+  features: {
+    [feature: string]: boolean
+  }
+}
+
+/**
+ * Application configuration
+ */
+export interface AppConfig {
+  /** Application name */
+  name: string
+  /** Application version */
+  version: string
+  /** Environment configuration */
+  env: EnvironmentConfig
+  /** AI provider configurations */
+  aiProviders: Record<AIProviderType, AIProviderConfig>
+  /** Logging configuration */
+  logging: {
+    level: 'debug' | 'info' | 'warn' | 'error'
+    format: 'json' | 'text'
+    outputs: ('console' | 'file')[]
+  }
+}
+
 // =============================================================================
 // EXPORTS
 // =============================================================================
 
-export * from './streaming'
-export * from './configuration'
-
 /**
  * Version information for the core types module
  */
-export const CORE_TYPES_VERSION = '1.0.0'
+export const CORE_TYPES_VERSION = '1.1.0'
 
 /**
  * Supported API versions
  */
 export const SUPPORTED_API_VERSIONS = ['v1'] as const
 export type ApiVersion = typeof SUPPORTED_API_VERSIONS[number]
+
+/**
+ * Default configuration values
+ */
+export const DEFAULT_CONFIG = {
+  REQUEST_TIMEOUT: 30000,
+  MAX_RETRIES: 3,
+  DEFAULT_PAGE_SIZE: 20,
+  MAX_PAGE_SIZE: 100,
+  CACHE_TTL: 300000, // 5 minutes
+  RATE_LIMIT_WINDOW: 60000, // 1 minute
+  RATE_LIMIT_MAX: 100
+} as const
+
+/**
+ * HTTP status codes
+ */
+export const HTTP_STATUS = {
+  OK: 200,
+  CREATED: 201,
+  NO_CONTENT: 204,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  UNPROCESSABLE_ENTITY: 422,
+  TOO_MANY_REQUESTS: 429,
+  INTERNAL_SERVER_ERROR: 500,
+  SERVICE_UNAVAILABLE: 503
+} as const
+
+/**
+ * Common error codes
+ */
+export const ERROR_CODES = {
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  RATE_LIMITED: 'RATE_LIMITED',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+  TIMEOUT: 'TIMEOUT',
+  INVALID_UUID: 'INVALID_UUID',
+  MISSING_PARAMETER: 'MISSING_PARAMETER'
+} as const
+
+// Re-export commonly used types for convenience
+export type {
+  ApiResponse as SuccessResponse,
+  ApiErrorResponse as ErrorResponse,
+  AsyncResult as Result
+}
+
+// Export all types for external use
+export default {
+  CORE_TYPES_VERSION,
+  SUPPORTED_API_VERSIONS,
+  DEFAULT_CONFIG,
+  HTTP_STATUS,
+  ERROR_CODES
+}
