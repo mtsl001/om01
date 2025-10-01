@@ -13,7 +13,12 @@
     "typescript",
     "sqlite",
     "vector-database",
-    "milvus"
+    "milvus",
+    "api-gateway",
+    "authentication",
+    "error-handling",
+    "express",
+    "jwt"
   ],
   "license": "MIT",
   "author": {
@@ -54,6 +59,9 @@
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config jest.integration.config.js",
     "test:e2e": "jest --config jest.e2e.config.js",
+    "test:auth": "jest packages/auth",
+    "test:gateway": "jest packages/api-gateway",
+    "test:error": "jest packages/error-handling",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write .",
@@ -63,14 +71,17 @@
     "clean:deps": "rimraf node_modules packages/*/node_modules apps/*/node_modules",
     "prepare": "husky install",
     "prepack": "npm run build:prod",
-    "postinstall": "npm run setup:database && npm run setup:vector-db",
+    "postinstall": "npm run setup:database && npm run setup:vector-db && npm run setup:auth",
     "setup:database": "node scripts/setup-database.js",
     "setup:vector-db": "node scripts/setup-vector-db.js",
+    "setup:auth": "node scripts/setup-auth.js",
     "db:migrate": "node scripts/migrate-database.js",
     "db:seed": "node scripts/seed-database.js",
     "db:backup": "node scripts/backup-database.js",
     "vector:init": "node scripts/init-vector-collections.js",
-    "vector:health": "node scripts/check-vector-health.js"
+    "vector:health": "node scripts/check-vector-health.js",
+    "api:health": "curl -f http://localhost:3000/api/health || exit 1",
+    "auth:test": "node scripts/test-auth.js"
   },
   "dependencies": {
     "@milvus-io/milvus-lite": "^2.4.0",
@@ -84,6 +95,8 @@
     "cors": "^2.8.5",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
+    "express-validator": "^7.2.0",
+    "express-async-errors": "^3.1.1",
     "helmet": "^8.0.0",
     "compression": "^1.7.4",
     "morgan": "^1.10.0",
@@ -94,12 +107,14 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "bcrypt": "^5.1.1",
+    "bcryptjs": "^2.4.3",
     "uuid": "^10.0.0",
     "lodash": "^4.17.21",
     "moment": "^2.30.1",
     "async": "^3.2.6",
     "p-queue": "^8.0.1",
     "p-limit": "^6.1.0",
+    "p-retry": "^6.2.1",
     "rxjs": "^7.8.1",
     "zod": "^3.23.8",
     "class-validator": "^0.14.1",
@@ -116,7 +131,24 @@
     "ora": "^8.1.1",
     "inquirer": "^12.0.0",
     "commander": "^12.1.0",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "cookie-parser": "^1.4.6",
+    "express-session": "^1.18.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "passport-local": "^1.0.0",
+    "connect-flash": "^0.1.1",
+    "multer": "^1.4.5-lts.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "http-proxy-middleware": "^3.0.3",
+    "node-cache": "^5.1.2",
+    "redis": "^4.7.0",
+    "ioredis": "^5.4.1",
+    "http-status-codes": "^2.3.0",
+    "validator": "^13.12.0",
+    "sanitize-html": "^2.13.1",
+    "rate-limiter-flexible": "^5.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -125,6 +157,7 @@
     "@types/compression": "^1.7.5",
     "@types/morgan": "^1.9.9",
     "@types/bcrypt": "^5.0.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/uuid": "^10.0.0",
     "@types/lodash": "^4.17.13",
@@ -134,6 +167,17 @@
     "@types/better-sqlite3": "^7.6.11",
     "@types/jest": "^29.5.14",
     "@types/supertest": "^6.0.2",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express-session": "^1.18.0",
+    "@types/passport": "^1.0.16",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/passport-local": "^1.0.38",
+    "@types/connect-flash": "^0.0.40",
+    "@types/multer": "^1.4.12",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.6",
+    "@types/validator": "^13.12.2",
+    "@types/sanitize-html": "^2.13.0",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
     "eslint": "^9.17.0",
@@ -141,6 +185,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-security": "^3.0.1",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "tsx": "^4.19.2",
@@ -158,7 +203,10 @@
     "nyc": "^17.1.0",
     "sqlite": "^5.1.1",
     "@vscode/vsce": "^3.2.1",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "nock": "^14.0.0",
+    "sinon": "^19.0.2",
+    "@types/sinon": "^17.0.3"
   },
   "optionalDependencies": {
     "@milvus-io/milvus-sdk-node": "^0.5.0",
@@ -219,7 +267,10 @@
     "moduleNameMapping": {
       "^@readyai/(.*)$": "<rootDir>/packages/$1/src",
       "^@/(.*)$": "<rootDir>/apps/$1/src"
-    }
+    },
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.ts"
+    ]
   },
   "nyc": {
     "extends": "@istanbuljs/nyc-config-typescript",
