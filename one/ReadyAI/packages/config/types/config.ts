@@ -1,12 +1,14 @@
+// packages/config/types/config.ts
 /**
- * Configuration types for ReadyAI Personal AI Development Orchestrator
+ * Enhanced Configuration types for ReadyAI Personal AI Development Orchestrator
  * 
- * This module adapts Cline's battle-tested multi-provider configuration system
- * with ReadyAI-specific extensions for phase management, local-first architecture,
- * and advanced context management capabilities.
+ * This module expands upon Cline's battle-tested multi-provider configuration system
+ * with ReadyAI-specific Phase 1.3 extensions for advanced context management,
+ * enterprise-grade security, and comprehensive workflow orchestration.
  * 
- * Achieves 70%+ reuse of Cline's proven ApiConfiguration patterns while adding
- * ReadyAI's unique orchestration and quality assurance features.
+ * Achieves 80%+ reuse of Cline's proven ApiConfiguration patterns while adding
+ * ReadyAI's Phase 1.3 features: enhanced auth, advanced gateway configuration,
+ * and sophisticated error handling capabilities.
  */
 
 import {
@@ -22,691 +24,932 @@ import {
 } from '../../foundation/types/core'
 
 // =============================================================================
-// AI PROVIDER CONFIGURATION (Adapted from Cline's ApiConfiguration)
+// PHASE 1.3 ENHANCED CONFIGURATION EXTENSIONS
 // =============================================================================
 
 /**
- * Enhanced AI provider enumeration supporting 30+ providers
- * Direct adaptation from Cline's proven provider ecosystem
+ * Phase 1.3 Enhanced Authentication Configuration
+ * Extends Cline's authentication patterns with enterprise-grade security
  */
-export enum ApiProvider {
-  // Core Providers
-  ANTHROPIC = 'anthropic',
-  OPENROUTER = 'openrouter', 
-  OPENAI = 'openai',
-  GEMINI = 'gemini',
+export interface EnhancedAuthConfig {
+  /** OAuth 2.0 configuration for enterprise SSO */
+  oauth: {
+    clientId?: string
+    clientSecret?: string
+    redirectUri: string
+    scopes: string[]
+    tokenEndpoint?: string
+    authorizationEndpoint?: string
+    introspectionEndpoint?: string
+    refreshTokenRotation: boolean
+    tokenLifetime: number // in seconds
+    refreshTokenLifetime: number // in seconds
+  }
   
-  // Specialized Providers
-  BEDROCK = 'bedrock',
-  VERTEX = 'vertex',
-  OLLAMA = 'ollama',
-  LMSTUDIO = 'lmstudio',
-  DEEPSEEK = 'deepseek',
-  QWEN = 'qwen',
-  MISTRAL = 'mistral',
-  GROQ = 'groq',
+  /** Multi-factor authentication settings */
+  mfa: {
+    enabled: boolean
+    methods: Array<'totp' | 'sms' | 'email' | 'hardware'>
+    gracePeriod: number // seconds before MFA challenge
+    backupCodes: {
+      enabled: boolean
+      count: number
+      lengthBytes: number
+    }
+  }
   
-  // Enterprise Providers
-  FIREWORKS = 'fireworks',
-  TOGETHER = 'together',
-  NEBIUS = 'nebius',
-  SAMBANOVA = 'sambanova',
-  CEREBRAS = 'cerebras',
-  XAI = 'xai',
-  
-  // Emerging Providers
-  HUGGINGFACE = 'huggingface',
-  MOONSHOT = 'moonshot',
-  REQUESTY = 'requesty',
-  ASKSAGE = 'asksage',
-  SAPAICORE = 'sapaicore',
-  BASETEN = 'baseten',
-  VERCELAIGATEWAY = 'vercelaigateway',
-  DIFY = 'dify',
-  
-  // Development Providers
-  VSCODELM = 'vscode-lm',
-  LITELLM = 'litellm',
-  CLINE = 'cline'
-}
+  /** Session management configuration */
+  session: {
+    strategy: 'jwt' | 'session' | 'hybrid'
+    cookieSettings: {
+      httpOnly: boolean
+      secure: boolean
+      sameSite: 'strict' | 'lax' | 'none'
+      domain?: string
+      path: string
+      maxAge: number // seconds
+    }
+    sessionStorage: {
+      type: 'memory' | 'redis' | 'database'
+      connectionString?: string
+      keyPrefix: string
+      ttl: number // seconds
+    }
+    concurrentSessions: {
+      enabled: boolean
+      maxSessions: number
+      strategy: 'reject' | 'revoke_oldest' | 'revoke_all'
+    }
+  }
 
-/**
- * OpenAI reasoning effort levels for O1/O3 series models
- * Adapted from Cline's reasoning configuration
- */
-export enum ReasoningEffort {
-  LOW = 'low',
-  MEDIUM = 'medium', 
-  HIGH = 'high',
-  MINIMAL = 'minimal'
-}
+  /** Enhanced password policies */
+  passwordPolicy: {
+    minLength: number
+    maxLength: number
+    requireUppercase: boolean
+    requireLowercase: boolean
+    requireNumbers: boolean
+    requireSpecialChars: boolean
+    forbidCommon: boolean
+    historyCount: number // prevent reuse of last N passwords
+    maxAge: number // days before password expires
+    lockoutThreshold: number // failed attempts before lockout
+    lockoutDuration: number // seconds
+  }
 
-/**
- * Model information interface with comprehensive metadata
- * Enhanced from Cline's ModelInfo with ReadyAI extensions
- */
-export interface ModelInfo {
-  /** Maximum output tokens */
-  maxTokens?: number
-  /** Context window size */
-  contextWindow?: number
-  /** Supports image input */
-  supportsImages?: boolean
-  /** Supports prompt caching */
-  supportsPromptCache?: boolean
-  /** Input price per million tokens */
-  inputPrice?: number
-  /** Output price per million tokens */
-  outputPrice?: number
-  /** Cache write price per million tokens */
-  cacheWritesPrice?: number
-  /** Cache read price per million tokens */
-  cacheReadsPrice?: number
-  /** Model description */
-  description?: string
-  /** Supports global endpoint routing */
-  supportsGlobalEndpoint?: boolean
-  /** ReadyAI Extensions */
-  supportsBatchGeneration?: boolean
-  supportsStructuredOutput?: boolean
-  qualityTier?: 'development' | 'production' | 'premium'
-}
-
-/**
- * Thinking configuration for models supporting reasoning modes
- * Direct adaptation from Cline's ThinkingConfig
- */
-export interface ThinkingConfig {
-  /** Maximum thinking budget in tokens */
-  maxBudget?: number
-  /** Output price when using thinking budget */
-  outputPrice?: number
-  /** Tiered pricing for different usage levels */
-  outputPriceTiers?: Array<{
-    tokenLimit: number
-    price: number
-  }>
-}
-
-/**
- * Language model chat selector for VS Code LM API
- * Preserved from Cline's LanguageModelChatSelector
- */
-export interface LanguageModelChatSelector {
-  vendor?: string
-  family?: string
-  version?: string
-  id?: string
-}
-
-// =============================================================================
-// READYAI PHASE CONFIGURATION
-// =============================================================================
-
-/**
- * Phase-specific AI configuration for ReadyAI's 7-phase methodology
- * Extension of Cline's plan/act mode separation concept
- */
-export interface PhaseConfiguration {
-  /** AI provider for this phase */
-  provider: ApiProvider
-  /** Model ID for this provider */
-  modelId: string
-  /** Model information */
-  modelInfo?: ModelInfo
-  /** Enable extended thinking mode */
-  extendedThinking: boolean
-  /** Thinking budget in tokens */
-  thinkingBudgetTokens?: number
-  /** Reasoning effort level */
-  reasoningEffort?: ReasoningEffort
-  /** Custom system prompt for phase */
-  customPrompt?: string
-  /** Temperature setting */
-  temperature?: number
-  /** Quality requirements */
-  qualityRequirements: {
-    minConfidence: number
-    maxRetries: number
-    validationRequired: boolean
+  /** Biometric authentication support */
+  biometric: {
+    enabled: boolean
+    methods: Array<'fingerprint' | 'face' | 'voice' | 'iris'>
+    fallbackToPassword: boolean
+    enrollmentRequired: boolean
   }
 }
 
 /**
- * Phase-specific configuration mapping
- * Maps each phase to its AI configuration
+ * Phase 1.3 Advanced Gateway Configuration
+ * Adapts Cline's API gateway patterns with enterprise routing and load balancing
  */
-export interface PhaseConfigurationMap {
-  [PhaseType.Phase0_StrategicCharter]: PhaseConfiguration
-  [PhaseType.Phase1_ArchitecturalBlueprint]: PhaseConfiguration
-  [PhaseType.Phase20_CoreContracts]: PhaseConfiguration
-  [PhaseType.Phase21_ModuleSpec]: PhaseConfiguration
-  [PhaseType.Phase23_ModuleSpecSubsequent]: PhaseConfiguration
-  [PhaseType.Phase30_ProjectScaffolding]: PhaseConfiguration
-  [PhaseType.Phase301_MasterPlan]: PhaseConfiguration
-  [PhaseType.Phase31_FileGeneration]: PhaseConfiguration
-  [PhaseType.Phase4_ValidationCorrection]: PhaseConfiguration
-  [PhaseType.Phase5_TestGeneration]: PhaseConfiguration
-  [PhaseType.Phase6_Documentation]: PhaseConfiguration
-  [PhaseType.Phase7_Iteration]: PhaseConfiguration
-}
-
-// =============================================================================
-// COMPREHENSIVE AI CONFIGURATION (Adapted from Cline)
-// =============================================================================
-
-/**
- * Complete API configuration interface
- * 70% adapted from Cline's battle-tested ApiConfiguration with ReadyAI extensions
- */
-export interface ApiConfiguration {
-  // =============================================================================
-  // GLOBAL CONFIGURATION (Direct from Cline)
-  // =============================================================================
-  
-  /** Anthropic API key */
-  apiKey?: string
-  /** Cline API key for premium features */
-  clineApiKey?: string
-  /** Unique identifier for usage tracking */
-  ulid?: string
-  
-  // OpenAI Configuration
-  openaiApiKey?: string
-  openaiBaseUrl?: string
-  openaiHeaders?: Record<string, string>
-  openaiNativeApiKey?: string
-  azureApiVersion?: string
-  
-  // Anthropic Configuration  
-  anthropicBaseUrl?: string
-  
-  // OpenRouter Configuration
-  openrouterApiKey?: string
-  openrouterProviderSorting?: string
-  
-  // AWS Bedrock Configuration
-  awsAccessKey?: string
-  awsSecretKey?: string
-  awsSessionToken?: string
-  awsRegion?: string
-  awsUseCrossRegionInference?: boolean
-  awsBedrockUsePromptCache?: boolean
-  awsUseProfile?: boolean
-  awsProfile?: string
-  awsBedrockEndpoint?: string
-  awsAuthentication?: string
-  awsBedrockApiKey?: string
-  
-  // Google Configuration
-  vertexProjectId?: string
-  vertexRegion?: string
-  geminiApiKey?: string
-  geminiBaseUrl?: string
-  
-  // Local/Self-hosted Configuration
-  ollamaBaseUrl?: string
-  ollamaApiKey?: string
-  ollamaApiOptionsCtxNum?: string
-  lmstudioBaseUrl?: string
-  lmstudioMaxTokens?: string
-  
-  // Specialized Provider Configuration
-  deepseekApiKey?: string
-  qwenApiKey?: string
-  qwenApiLine?: string
-  qwenCodeOauthPath?: string
-  mistralApiKey?: string
-  groqApiKey?: string
-  fireworksApiKey?: string
-  fireworksModelMaxCompletionTokens?: number
-  fireworksModelMaxTokens?: number
-  togetherApiKey?: string
-  nebiusApiKey?: string
-  sambannovaApiKey?: string
-  cerebrasApiKey?: string
-  xaiApiKey?: string
-  huggingfaceApiKey?: string
-  moonshotApiKey?: string
-  moonshotApiLine?: string
-  requestyApiKey?: string
-  requestyBaseUrl?: string
-  asksageApiKey?: string
-  asksageApiUrl?: string
-  
-  // Enterprise Providers
-  sapaiCoreClientId?: string
-  sapaiCoreClientSecret?: string
-  sapaiResourceGroup?: string
-  sapaiCoreTokenUrl?: string
-  sapaiCoreBaseUrl?: string
-  bastetenApiKey?: string
-  vercelaiGatewayApiKey?: string
-  difyApiKey?: string
-  difyBaseUrl?: string
-  
-  // LiteLLM Configuration
-  litellmBaseUrl?: string
-  litellmApiKey?: string
-  litellmUsePromptCache?: boolean
-  
-  // Global Settings
-  requestTimeoutMs?: number
-  clineAccountId?: string
-
-  // =============================================================================
-  // READYAI PHASE CONFIGURATIONS
-  // =============================================================================
-  
-  /** Phase-specific AI configurations */
-  phaseConfigurations: PhaseConfigurationMap
-  
-  /** Default fallback configuration */
-  defaultPhaseConfig: PhaseConfiguration
-  
-  /** Global AI preferences */
-  globalAiPreferences: {
-    /** Preferred provider for new projects */
-    preferredProvider: ApiProvider
-    /** Enable automatic provider fallback */
-    enableFallback: boolean
-    /** Fallback provider order */
-    fallbackOrder: ApiProvider[]
-    /** Global extended thinking preference */
-    globalExtendedThinking: boolean
-    /** Global temperature setting */
-    globalTemperature: number
-    /** Token budget management */
-    tokenBudgetManagement: {
-      dailyBudget: number
-      perPhaseLimit: number
-      warningThreshold: number
+export interface AdvancedGatewayConfig {
+  /** Load balancing configuration */
+  loadBalancing: {
+    strategy: 'round_robin' | 'least_connections' | 'weighted' | 'ip_hash' | 'geolocation'
+    healthCheck: {
+      enabled: boolean
+      interval: number // milliseconds
+      timeout: number // milliseconds
+      retries: number
+      path: string
+      expectedStatus: number[]
+    }
+    weights: Record<string, number> // endpoint -> weight mapping
+    failover: {
+      enabled: boolean
+      maxFailures: number
+      recoveryTime: number // milliseconds
     }
   }
 
-  // =============================================================================
-  // READYAI LOCAL-FIRST CONFIGURATION
-  // =============================================================================
-  
-  /** Local development configuration */
-  localConfig: {
-    /** VS Code extension settings */
-    vscodeSettings: {
-      /** Auto-save generated files */
-      autoSave: boolean
-      /** Show progress notifications */
-      showProgress: boolean
-      /** Enable file watchers */
-      enableFileWatchers: boolean
-      /** Diff view preferences */
-      diffViewMode: 'side-by-side' | 'inline'
+  /** Rate limiting with advanced policies */
+  rateLimiting: {
+    global: {
+      enabled: boolean
+      requests: number
+      window: number // seconds
+      burst: number
     }
-    
-    /** File system settings */
-    fileSystemSettings: {
-      /** Default file encoding */
-      encoding: 'utf-8' | 'utf-16'
-      /** Line ending preference */
-      lineEndings: 'lf' | 'crlf' | 'auto'
-      /** Indentation settings */
-      indentation: {
-        type: 'spaces' | 'tabs'
-        size: number
+    perUser: {
+      enabled: boolean
+      requests: number
+      window: number // seconds
+      burst: number
+    }
+    perEndpoint: Record<string, {
+      requests: number
+      window: number
+      burst: number
+    }>
+    quotas: {
+      daily: number
+      monthly: number
+      resetTime: string // HH:MM format
+    }
+  }
+
+  /** Circuit breaker configuration */
+  circuitBreaker: {
+    enabled: boolean
+    failureThreshold: number // failures before opening
+    recoveryTimeout: number // milliseconds before half-open
+    monitoringWindow: number // milliseconds
+    minimumRequests: number // min requests before circuit can open
+  }
+
+  /** Request/Response transformation */
+  transformation: {
+    requestInterceptors: Array<{
+      name: string
+      enabled: boolean
+      order: number
+      config: Record<string, any>
+    }>
+    responseInterceptors: Array<{
+      name: string
+      enabled: boolean
+      order: number
+      config: Record<string, any>
+    }>
+    headerManagement: {
+      addHeaders: Record<string, string>
+      removeHeaders: string[]
+      overrideHeaders: Record<string, string>
+    }
+  }
+
+  /** Caching strategies */
+  caching: {
+    enabled: boolean
+    strategy: 'memory' | 'redis' | 'disk' | 'hybrid'
+    ttl: {
+      default: number // seconds
+      byEndpoint: Record<string, number>
+      byContentType: Record<string, number>
+    }
+    invalidation: {
+      strategy: 'ttl' | 'manual' | 'event_driven'
+      webhooks: string[]
+    }
+    compression: {
+      enabled: boolean
+      algorithm: 'gzip' | 'brotli' | 'deflate'
+      level: number // 1-9
+    }
+  }
+
+  /** Advanced routing configuration */
+  routing: {
+    strategies: Array<{
+      name: string
+      pattern: string
+      method: string[]
+      destination: string
+      priority: number
+      conditions: Array<{
+        type: 'header' | 'query' | 'body' | 'ip' | 'time' | 'user_agent'
+        field?: string
+        operator: 'equals' | 'contains' | 'matches' | 'in' | 'gt' | 'lt'
+        value: string | number | string[]
+      }>
+    }>
+    fallback: {
+      enabled: boolean
+      destination: string
+      timeout: number
+    }
+  }
+}
+
+/**
+ * Phase 1.3 Comprehensive Error Handling Configuration
+ * Extends Cline's error patterns with enterprise monitoring and recovery
+ */
+export interface ComprehensiveErrorConfig {
+  /** Error classification and handling */
+  classification: {
+    categories: Record<string, {
+      priority: 'critical' | 'high' | 'medium' | 'low'
+      retryable: boolean
+      escalation: boolean
+      notification: boolean
+    }>
+    customRules: Array<{
+      pattern: string
+      category: string
+      action: 'log' | 'retry' | 'escalate' | 'ignore'
+      threshold?: number
+    }>
+  }
+
+  /** Advanced retry configuration */
+  retryPolicies: {
+    default: {
+      maxAttempts: number
+      backoffStrategy: 'exponential' | 'linear' | 'fixed' | 'custom'
+      initialDelay: number // milliseconds
+      maxDelay: number // milliseconds
+      multiplier: number
+      jitter: boolean
+    }
+    byErrorType: Record<string, {
+      maxAttempts: number
+      backoffStrategy: 'exponential' | 'linear' | 'fixed' | 'custom'
+      initialDelay: number
+      maxDelay: number
+      multiplier: number
+      jitter: boolean
+    }>
+    circuitBreaker: {
+      enabled: boolean
+      failureThreshold: number
+      recoveryTimeout: number
+    }
+  }
+
+  /** Error monitoring and alerting */
+  monitoring: {
+    enabled: boolean
+    metrics: {
+      errorRate: boolean
+      responseTime: boolean
+      availability: boolean
+      customMetrics: Record<string, string>
+    }
+    alerting: {
+      channels: Array<{
+        type: 'email' | 'slack' | 'webhook' | 'sms'
+        config: Record<string, any>
+        conditions: Array<{
+          metric: string
+          threshold: number
+          duration: number // seconds
+          operator: 'gt' | 'lt' | 'eq' | 'ne'
+        }>
+      }>
+    }
+    logging: {
+      level: 'debug' | 'info' | 'warn' | 'error' | 'critical'
+      structured: boolean
+      includeStackTrace: boolean
+      sanitizeFields: string[]
+      retention: {
+        days: number
+        archival: boolean
+        compression: boolean
       }
     }
-    
-    /** Context management settings */
-    contextSettings: {
-      /** Maximum context nodes per request */
-      maxContextNodes: number
-      /** Context cache TTL in seconds */
-      cacheTtl: number
-      /** Vector embedding model */
-      embeddingModel: string
-      /** Semantic similarity threshold */
-      similarityThreshold: number
-    }
   }
 
-  // =============================================================================
-  // READYAI QUALITY ASSURANCE CONFIGURATION
-  // =============================================================================
-  
-  /** Quality assurance settings */
-  qualityConfig: {
-    /** Validation settings */
-    validation: {
-      /** Enable syntax validation */
-      enableSyntaxValidation: boolean
-      /** Enable type checking */
-      enableTypeChecking: boolean
-      /** Enable linting */
-      enableLinting: boolean
-      /** Linting strictness */
-      lintingStrictness: 'basic' | 'standard' | 'strict'
-      /** Custom validation rules */
-      customRules: string[]
+  /** Error recovery strategies */
+  recovery: {
+    autoRecovery: {
+      enabled: boolean
+      strategies: Array<{
+        name: string
+        conditions: string[]
+        actions: Array<'restart_service' | 'clear_cache' | 'reset_connections' | 'switch_provider'>
+        cooldown: number // seconds between recovery attempts
+      }>
     }
-    
-    /** Testing requirements */
-    testing: {
-      /** Minimum test coverage */
-      minTestCoverage: number
-      /** Generate unit tests */
-      generateUnitTests: boolean
-      /** Generate integration tests */
-      generateIntegrationTests: boolean
-      /** Test framework preference */
-      testFramework: string
-    }
-    
-    /** Code review settings */
-    codeReview: {
-      /** Enable automatic review */
-      enableAutoReview: boolean
-      /** Review strictness level */
-      reviewStrictness: 'permissive' | 'standard' | 'strict'
-      /** Focus areas */
-      focusAreas: Array<'security' | 'performance' | 'maintainability' | 'style'>
-    }
-  }
-
-  // =============================================================================
-  // READYAI PROJECT SCAFFOLDING CONFIGURATION
-  // =============================================================================
-  
-  /** Project scaffolding preferences */
-  scaffoldingConfig: {
-    /** Template preferences */
-    templates: {
-      /** Default project template */
-      defaultTemplate: string
-      /** Custom template directories */
-      customTemplates: string[]
-      /** Template variable substitution */
-      variableSubstitution: Record<string, string>
-    }
-    
-    /** Dependency management */
-    dependencies: {
-      /** Automatic dependency detection */
-      autoDetection: boolean
-      /** Dependency resolution strategy */
-      resolutionStrategy: 'conservative' | 'latest' | 'stable'
-      /** Security scanning */
-      securityScanning: boolean
-    }
-    
-    /** Build system configuration */
-    buildSystem: {
-      /** Build tool preference */
-      buildTool: string
-      /** Package manager preference */
-      packageManager: 'npm' | 'yarn' | 'pnpm' | 'bun'
-      /** CI/CD integration */
-      cicdIntegration: boolean
-      /** Docker support */
-      dockerSupport: boolean
+    fallbackModes: {
+      degradedService: {
+        enabled: boolean
+        features: string[] // features to disable in degraded mode
+        timeout: number // seconds before attempting normal operation
+      }
+      readOnlyMode: {
+        enabled: boolean
+        allowedEndpoints: string[]
+        userMessage: string
+      }
     }
   }
 }
 
 // =============================================================================
-// CONFIGURATION VALIDATION AND MANAGEMENT
+// ENHANCED AI PROVIDER CONFIGURATION (Phase 1.3 Extensions)
 // =============================================================================
 
 /**
- * Configuration validation result with detailed feedback
- * Extends ReadyAI's ValidationResult pattern
+ * Phase 1.3 Enhanced AI Provider Configuration
+ * Builds on Cline's ApiConfiguration with advanced enterprise features
  */
-export interface ConfigurationValidationResult extends ValidationResult {
-  /** Configuration section that failed */
-  section: string
-  /** Critical errors that prevent operation */
-  criticalErrors: ValidationError[]
-  /** Warnings that should be addressed */
-  warnings: ValidationError[]
-  /** Suggestions for optimization */
-  optimizations: Array<{
-    setting: string
-    currentValue: any
-    suggestedValue: any
-    reason: string
+export interface EnhancedApiConfiguration extends ApiConfiguration {
+  // =============================================================================
+  // PHASE 1.3 AUTHENTICATION ENHANCEMENTS
+  // =============================================================================
+  
+  /** Enhanced authentication configuration */
+  enhancedAuth: EnhancedAuthConfig
+
+  /** Advanced gateway configuration */
+  advancedGateway: AdvancedGatewayConfig
+
+  /** Comprehensive error handling */
+  comprehensiveErrorHandling: ComprehensiveErrorConfig
+
+  // =============================================================================
+  // PHASE 1.3 ADVANCED AI PROVIDER FEATURES
+  // =============================================================================
+  
+  /** Multi-region deployment configuration */
+  multiRegion: {
+    enabled: boolean
+    regions: Array<{
+      name: string
+      endpoint: string
+      priority: number
+      latencyThreshold: number // milliseconds
+      healthCheck: {
+        enabled: boolean
+        endpoint: string
+        interval: number
+        timeout: number
+      }
+    }>
+    failover: {
+      strategy: 'priority' | 'latency' | 'round_robin'
+      healthCheckRequired: boolean
+    }
+  }
+
+  /** Advanced model configuration */
+  enhancedModelConfig: {
+    /** Model performance optimization */
+    performance: {
+      /** Connection pooling */
+      connectionPool: {
+        minConnections: number
+        maxConnections: number
+        idleTimeout: number // milliseconds
+        connectionTimeout: number // milliseconds
+      }
+      /** Request batching */
+      batching: {
+        enabled: boolean
+        maxBatchSize: number
+        maxWaitTime: number // milliseconds
+      }
+      /** Response streaming optimization */
+      streaming: {
+        chunkSize: number
+        bufferSize: number
+        compression: boolean
+      }
+    }
+
+    /** Model-specific fine-tuning parameters */
+    fineTuning: Record<string, {
+      parameters: Record<string, any>
+      customPrompts: {
+        systemPrompt?: string
+        userPromptTemplate?: string
+        assistantPromptTemplate?: string
+      }
+      processingRules: Array<{
+        type: 'pre_process' | 'post_process'
+        rule: string
+        enabled: boolean
+      }>
+    }>
+
+    /** Cost optimization settings */
+    costOptimization: {
+      budgetLimits: {
+        daily: number
+        monthly: number
+        perRequest: number
+      }
+      costTracking: {
+        enabled: boolean
+        alertThresholds: number[] // percentages of budget
+        detailedLogging: boolean
+      }
+      modelSelection: {
+        costAware: boolean
+        fallbackModel: string
+        qualityThreshold: number
+      }
+    }
+  }
+
+  // =============================================================================
+  // PHASE 1.3 ENTERPRISE FEATURES
+  // =============================================================================
+  
+  /** Enterprise audit configuration */
+  enterpriseAudit: {
+    enabled: boolean
+    logLevel: 'minimal' | 'standard' | 'comprehensive'
+    retention: {
+      days: number
+      archival: boolean
+      encryption: boolean
+    }
+    compliance: {
+      frameworks: Array<'soc2' | 'hipaa' | 'gdpr' | 'pci' | 'iso27001'>
+      dataClassification: Record<string, 'public' | 'internal' | 'confidential' | 'restricted'>
+      retentionPolicies: Record<string, number> // data type -> retention days
+    }
+  }
+
+  /** Advanced security configuration */
+  advancedSecurity: {
+    encryption: {
+      atRest: {
+        enabled: boolean
+        algorithm: 'aes-256' | 'chacha20' | 'xchacha20'
+        keyRotation: {
+          enabled: boolean
+          intervalDays: number
+        }
+      }
+      inTransit: {
+        tlsVersion: '1.2' | '1.3'
+        cipherSuites: string[]
+        certificateValidation: boolean
+      }
+      fieldLevel: {
+        enabled: boolean
+        encryptedFields: string[]
+        keyManagement: 'aws-kms' | 'azure-kv' | 'hashicorp-vault' | 'local'
+      }
+    }
+    accessControl: {
+      rbac: {
+        enabled: boolean
+        roles: Record<string, {
+          permissions: string[]
+          inheritance: string[]
+          conditions: Array<{
+            field: string
+            operator: string
+            value: any
+          }>
+        }>
+      }
+      attributeBased: {
+        enabled: boolean
+        policies: Array<{
+          name: string
+          effect: 'allow' | 'deny'
+          conditions: string // ABAC policy expression
+          resources: string[]
+          actions: string[]
+        }>
+      }
+    }
+    threatDetection: {
+      enabled: boolean
+      anomalyDetection: boolean
+      rateLimitMonitoring: boolean
+      suspiciousPatterns: string[]
+      responseActions: Array<'log' | 'alert' | 'block' | 'challenge'>
+    }
+  }
+
+  /** Performance monitoring configuration */
+  performanceMonitoring: {
+    metrics: {
+      responseTime: boolean
+      throughput: boolean
+      errorRate: boolean
+      resourceUtilization: boolean
+      customMetrics: Record<string, {
+        type: 'counter' | 'gauge' | 'histogram'
+        description: string
+        labels: string[]
+      }>
+    }
+    alerting: {
+      enabled: boolean
+      thresholds: Record<string, {
+        warning: number
+        critical: number
+        duration: number // seconds
+      }>
+      notifications: Array<{
+        channel: string
+        events: string[]
+        template: string
+      }>
+    }
+    profiling: {
+      enabled: boolean
+      samplingRate: number // 0.0 to 1.0
+      includeStackTrace: boolean
+    }
+  }
+}
+
+// =============================================================================
+// PHASE 1.3 CONFIGURATION VALIDATION AND MANAGEMENT
+// =============================================================================
+
+/**
+ * Phase 1.3 Enhanced Configuration Validation
+ * Extends Cline's validation patterns with comprehensive enterprise checks
+ */
+export interface EnhancedConfigurationValidationResult extends ValidationResult {
+  /** Configuration section that was validated */
+  section: keyof EnhancedApiConfiguration
+  
+  /** Security validation results */
+  securityChecks: Array<{
+    check: string
+    passed: boolean
+    severity: 'low' | 'medium' | 'high' | 'critical'
+    recommendation?: string
+  }>
+  
+  /** Performance validation results */
+  performanceChecks: Array<{
+    check: string
+    passed: boolean
+    impact: 'low' | 'medium' | 'high'
+    optimizationSuggestion?: string
+  }>
+  
+  /** Compliance validation results */
+  complianceChecks: Array<{
+    framework: string
+    requirement: string
+    compliant: boolean
+    remediation?: string
   }>
 }
 
 /**
- * Configuration update request with atomic changes
+ * Phase 1.3 Configuration Templates
+ * Enterprise-ready configuration templates for common deployment scenarios
  */
-export interface ConfigurationUpdateRequest {
-  /** Target configuration section */
-  section: keyof ApiConfiguration
-  /** Changes to apply */
-  changes: Record<string, any>
-  /** Validate before applying */
-  validate: boolean
-  /** Create backup before update */
-  createBackup: boolean
-  /** Metadata for audit trail */
-  metadata: {
-    updatedBy: string
-    reason: string
-    timestamp: string
+export interface EnhancedConfigurationTemplate extends ConfigurationTemplate {
+  /** Phase 1.3 specific template features */
+  phase13Features: {
+    enhancedAuth: boolean
+    advancedGateway: boolean
+    comprehensiveErrorHandling: boolean
+    enterpriseAudit: boolean
+    advancedSecurity: boolean
+    performanceMonitoring: boolean
   }
-}
-
-/**
- * Configuration backup with versioning
- */
-export interface ConfigurationBackup {
-  /** Backup identifier */
-  id: UUID
-  /** Configuration snapshot */
-  configuration: ApiConfiguration
-  /** Backup timestamp */
-  timestamp: string
-  /** Backup metadata */
-  metadata: {
-    version: string
-    createdBy: string
-    description: string
+  
+  /** Deployment environment optimizations */
+  environmentOptimizations: {
+    development: Partial<EnhancedApiConfiguration>
+    staging: Partial<EnhancedApiConfiguration>
+    production: Partial<EnhancedApiConfiguration>
   }
+  
+  /** Compliance presets */
+  compliancePresets: Record<string, Partial<EnhancedApiConfiguration>>
 }
 
 // =============================================================================
-// CONFIGURATION MANAGEMENT INTERFACES
+// PHASE 1.3 CONFIGURATION BUILDER AND UTILITIES
 // =============================================================================
 
 /**
- * Configuration manager interface with comprehensive operations
+ * Phase 1.3 Enhanced Configuration Builder
+ * Fluent interface for building complex enterprise configurations
  */
-export interface IConfigurationManager {
-  /**
-   * Load configuration from storage
-   */
-  loadConfiguration(): Promise<ApiResponse<ApiConfiguration>>
-  
-  /**
-   * Save configuration to storage with validation
-   */
-  saveConfiguration(config: ApiConfiguration): Promise<ApiResponse<void>>
-  
-  /**
-   * Update specific configuration section
-   */
-  updateConfiguration(request: ConfigurationUpdateRequest): Promise<ApiResponse<void>>
-  
-  /**
-   * Validate configuration integrity
-   */
-  validateConfiguration(config: ApiConfiguration): Promise<ApiResponse<ConfigurationValidationResult>>
-  
-  /**
-   * Create configuration backup
-   */
-  createBackup(description: string): Promise<ApiResponse<ConfigurationBackup>>
-  
-  /**
-   * Restore from backup
-   */
-  restoreBackup(backupId: UUID): Promise<ApiResponse<void>>
-  
-  /**
-   * Get configuration schema
-   */
-  getSchema(): Promise<ApiResponse<Record<string, any>>>
-  
-  /**
-   * Reset to default configuration
-   */
-  resetToDefaults(): Promise<ApiResponse<void>>
-}
+export class EnhancedConfigurationBuilder {
+  private config: Partial<EnhancedApiConfiguration> = {}
 
-/**
- * Configuration observer for reactive updates
- */
-export interface IConfigurationObserver {
-  /**
-   * Called when configuration changes
-   */
-  onConfigurationChanged(config: ApiConfiguration, changes: string[]): void
-  
-  /**
-   * Called when configuration validation fails
-   */
-  onValidationFailed(errors: ValidationError[]): void
-}
-
-// =============================================================================
-// PHASE-SPECIFIC CONFIGURATION HELPERS
-// =============================================================================
-
-/**
- * Phase configuration builder with fluent interface
- */
-export class PhaseConfigurationBuilder {
-  private config: Partial<PhaseConfiguration> = {}
-
-  static create(): PhaseConfigurationBuilder {
-    return new PhaseConfigurationBuilder()
+  static create(): EnhancedConfigurationBuilder {
+    return new EnhancedConfigurationBuilder()
   }
 
-  withProvider(provider: ApiProvider): this {
-    this.config.provider = provider
+  /** Build enhanced authentication configuration */
+  withEnhancedAuth(authConfig: Partial<EnhancedAuthConfig>): this {
+    this.config.enhancedAuth = {
+      ...this.config.enhancedAuth,
+      ...authConfig
+    } as EnhancedAuthConfig
     return this
   }
 
-  withModel(modelId: string, modelInfo?: ModelInfo): this {
-    this.config.modelId = modelId
-    this.config.modelInfo = modelInfo
+  /** Build advanced gateway configuration */
+  withAdvancedGateway(gatewayConfig: Partial<AdvancedGatewayConfig>): this {
+    this.config.advancedGateway = {
+      ...this.config.advancedGateway,
+      ...gatewayConfig
+    } as AdvancedGatewayConfig
     return this
   }
 
-  withThinking(enabled: boolean, budget?: number): this {
-    this.config.extendedThinking = enabled
-    this.config.thinkingBudgetTokens = budget
+  /** Build comprehensive error handling configuration */
+  withComprehensiveErrorHandling(errorConfig: Partial<ComprehensiveErrorConfig>): this {
+    this.config.comprehensiveErrorHandling = {
+      ...this.config.comprehensiveErrorHandling,
+      ...errorConfig
+    } as ComprehensiveErrorConfig
     return this
   }
 
-  withQuality(requirements: PhaseConfiguration['qualityRequirements']): this {
-    this.config.qualityRequirements = requirements
-    return this
-  }
-
-  build(): PhaseConfiguration {
-    if (!this.config.provider || !this.config.modelId || !this.config.qualityRequirements) {
-      throw new ReadyAIError(
-        'Missing required configuration fields',
-        'INVALID_PHASE_CONFIG',
-        400
-      )
+  /** Apply security hardening preset */
+  withSecurityHardening(level: 'basic' | 'standard' | 'strict' = 'standard'): this {
+    const securityPresets = {
+      basic: {
+        enhancedAuth: {
+          mfa: { enabled: false, methods: [], gracePeriod: 300 },
+          passwordPolicy: { minLength: 8, maxLength: 128, requireUppercase: true }
+        },
+        advancedSecurity: {
+          encryption: { atRest: { enabled: true }, inTransit: { tlsVersion: '1.2' as const } }
+        }
+      },
+      standard: {
+        enhancedAuth: {
+          mfa: { enabled: true, methods: ['totp' as const], gracePeriod: 300 },
+          passwordPolicy: { minLength: 12, maxLength: 128, requireUppercase: true, requireNumbers: true }
+        },
+        advancedSecurity: {
+          encryption: { atRest: { enabled: true }, inTransit: { tlsVersion: '1.3' as const } },
+          threatDetection: { enabled: true, anomalyDetection: true }
+        }
+      },
+      strict: {
+        enhancedAuth: {
+          mfa: { enabled: true, methods: ['totp' as const, 'hardware' as const], gracePeriod: 60 },
+          passwordPolicy: { minLength: 16, maxLength: 128, requireUppercase: true, requireNumbers: true, requireSpecialChars: true }
+        },
+        advancedSecurity: {
+          encryption: { atRest: { enabled: true }, inTransit: { tlsVersion: '1.3' as const } },
+          threatDetection: { enabled: true, anomalyDetection: true, rateLimitMonitoring: true }
+        }
+      }
     }
-    return this.config as PhaseConfiguration
-  }
-}
 
-/**
- * Configuration template for common setups
- */
-export interface ConfigurationTemplate {
-  /** Template identifier */
-  id: string
-  /** Template name */
-  name: string
-  /** Template description */
-  description: string
-  /** Target use case */
-  useCase: 'development' | 'production' | 'enterprise' | 'research'
-  /** Base configuration */
-  configuration: Partial<ApiConfiguration>
-  /** Required environment variables */
-  requiredEnvVars: string[]
-  /** Setup instructions */
-  setupInstructions: string[]
+    const preset = securityPresets[level]
+    this.config.enhancedAuth = { ...this.config.enhancedAuth, ...preset.enhancedAuth } as EnhancedAuthConfig
+    this.config.advancedSecurity = { ...this.config.advancedSecurity, ...preset.advancedSecurity } as any
+    return this
+  }
+
+  /** Apply compliance framework configuration */
+  withComplianceFramework(frameworks: Array<'soc2' | 'hipaa' | 'gdpr' | 'pci' | 'iso27001'>): this {
+    this.config.enterpriseAudit = {
+      ...this.config.enterpriseAudit,
+      enabled: true,
+      compliance: {
+        ...this.config.enterpriseAudit?.compliance,
+        frameworks
+      }
+    } as any
+    return this
+  }
+
+  /** Build final configuration */
+  build(): EnhancedApiConfiguration {
+    return this.config as EnhancedApiConfiguration
+  }
 }
 
 // =============================================================================
-// CONFIGURATION UTILITIES AND CONSTANTS
+// PHASE 1.3 CONSTANTS AND DEFAULTS
 // =============================================================================
 
 /**
- * Default phase configuration for fallback scenarios
+ * Phase 1.3 Default Enhanced Configuration
  */
-export const DEFAULT_PHASE_CONFIGURATION: PhaseConfiguration = {
-  provider: ApiProvider.OPENROUTER,
-  modelId: 'anthropic/claude-3.5-sonnet',
-  extendedThinking: true,
-  thinkingBudgetTokens: 10000,
-  reasoningEffort: ReasoningEffort.MEDIUM,
-  temperature: 0.7,
-  qualityRequirements: {
-    minConfidence: 0.8,
-    maxRetries: 3,
-    validationRequired: true
+export const DEFAULT_ENHANCED_CONFIGURATION: Partial<EnhancedApiConfiguration> = {
+  enhancedAuth: {
+    oauth: {
+      redirectUri: 'http://localhost:3000/auth/callback',
+      scopes: ['openid', 'profile', 'email'],
+      refreshTokenRotation: true,
+      tokenLifetime: 3600, // 1 hour
+      refreshTokenLifetime: 86400 // 24 hours
+    },
+    mfa: {
+      enabled: false,
+      methods: [],
+      gracePeriod: 300,
+      backupCodes: {
+        enabled: false,
+        count: 10,
+        lengthBytes: 8
+      }
+    },
+    session: {
+      strategy: 'hybrid',
+      cookieSettings: {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 3600
+      },
+      sessionStorage: {
+        type: 'memory',
+        keyPrefix: 'readyai:session:',
+        ttl: 3600
+      },
+      concurrentSessions: {
+        enabled: true,
+        maxSessions: 5,
+        strategy: 'revoke_oldest'
+      }
+    },
+    passwordPolicy: {
+      minLength: 8,
+      maxLength: 128,
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumbers: true,
+      requireSpecialChars: false,
+      forbidCommon: true,
+      historyCount: 5,
+      maxAge: 90,
+      lockoutThreshold: 5,
+      lockoutDuration: 900
+    },
+    biometric: {
+      enabled: false,
+      methods: [],
+      fallbackToPassword: true,
+      enrollmentRequired: false
+    }
+  },
+
+  advancedGateway: {
+    loadBalancing: {
+      strategy: 'round_robin',
+      healthCheck: {
+        enabled: true,
+        interval: 30000,
+        timeout: 5000,
+        retries: 3,
+        path: '/health',
+        expectedStatus: [200, 204]
+      },
+      weights: {},
+      failover: {
+        enabled: true,
+        maxFailures: 3,
+        recoveryTime: 30000
+      }
+    },
+    rateLimiting: {
+      global: {
+        enabled: true,
+        requests: 1000,
+        window: 60,
+        burst: 100
+      },
+      perUser: {
+        enabled: true,
+        requests: 100,
+        window: 60,
+        burst: 20
+      },
+      perEndpoint: {},
+      quotas: {
+        daily: 10000,
+        monthly: 300000,
+        resetTime: '00:00'
+      }
+    },
+    circuitBreaker: {
+      enabled: true,
+      failureThreshold: 5,
+      recoveryTimeout: 30000,
+      monitoringWindow: 60000,
+      minimumRequests: 10
+    },
+    transformation: {
+      requestInterceptors: [],
+      responseInterceptors: [],
+      headerManagement: {
+        addHeaders: {
+          'X-ReadyAI-Version': '1.0.0',
+          'X-Request-ID': '${requestId}'
+        },
+        removeHeaders: ['X-Powered-By'],
+        overrideHeaders: {}
+      }
+    },
+    caching: {
+      enabled: true,
+      strategy: 'memory',
+      ttl: {
+        default: 300,
+        byEndpoint: {},
+        byContentType: {
+          'application/json': 300,
+          'text/plain': 600
+        }
+      },
+      invalidation: {
+        strategy: 'ttl',
+        webhooks: []
+      },
+      compression: {
+        enabled: true,
+        algorithm: 'gzip',
+        level: 6
+      }
+    },
+    routing: {
+      strategies: [],
+      fallback: {
+        enabled: true,
+        destination: '/api/v1/fallback',
+        timeout: 30000
+      }
+    }
+  },
+
+  comprehensiveErrorHandling: {
+    classification: {
+      categories: {
+        'authentication': { priority: 'high', retryable: false, escalation: true, notification: true },
+        'rate_limit': { priority: 'medium', retryable: true, escalation: false, notification: false },
+        'server_error': { priority: 'critical', retryable: true, escalation: true, notification: true }
+      },
+      customRules: []
+    },
+    retryPolicies: {
+      default: {
+        maxAttempts: 3,
+        backoffStrategy: 'exponential',
+        initialDelay: 1000,
+        maxDelay: 30000,
+        multiplier: 2,
+        jitter: true
+      },
+      byErrorType: {},
+      circuitBreaker: {
+        enabled: true,
+        failureThreshold: 5,
+        recoveryTimeout: 30000
+      }
+    },
+    monitoring: {
+      enabled: true,
+      metrics: {
+        errorRate: true,
+        responseTime: true,
+        availability: true,
+        customMetrics: {}
+      },
+      alerting: {
+        channels: []
+      },
+      logging: {
+        level: 'info',
+        structured: true,
+        includeStackTrace: false,
+        sanitizeFields: ['password', 'apiKey', 'token'],
+        retention: {
+          days: 30,
+          archival: false,
+          compression: false
+        }
+      }
+    },
+    recovery: {
+      autoRecovery: {
+        enabled: false,
+        strategies: [],
+        cooldown: 300
+      },
+      fallbackModes: {
+        degradedService: {
+          enabled: false,
+          features: [],
+          timeout: 300
+        },
+        readOnlyMode: {
+          enabled: false,
+          allowedEndpoints: ['/health', '/status'],
+          userMessage: 'System is currently in read-only mode due to maintenance.'
+        }
+      }
+    }
   }
 }
 
 /**
- * Configuration validation rules
+ * Phase 1.3 Configuration Schema Version
  */
-export const CONFIGURATION_VALIDATION_RULES = {
-  apiKey: {
-    required: false,
-    minLength: 10,
-    pattern: /^[a-zA-Z0-9_-]+$/
-  },
-  requestTimeoutMs: {
-    min: 1000,
-    max: 300000,
-    default: 30000
-  },
-  temperature: {
-    min: 0,
-    max: 2,
-    default: 0.7
-  }
-} as const
+export const ENHANCED_CONFIG_SCHEMA_VERSION = '1.3.0'
 
 /**
- * Environment variable mapping for configuration
+ * Supported enhanced configuration versions
  */
-export const CONFIG_ENV_MAPPING = {
-  'apiKey': 'ANTHROPIC_API_KEY',
-  'openaiApiKey': 'OPENAI_API_KEY',
-  'openrouterApiKey': 'OPENROUTER_API_KEY',
-  'geminiApiKey': 'GEMINI_API_KEY',
-  'groqApiKey': 'GROQ_API_KEY'
-} as const
-
-/**
- * Configuration file schema version
- */
-export const CONFIG_SCHEMA_VERSION = '1.0.0'
-
-/**
- * Maximum configuration file size in bytes
- */
-export const MAX_CONFIG_FILE_SIZE = 1024 * 1024 // 1MB
+export const SUPPORTED_ENHANCED_CONFIG_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0'] as const
+export type EnhancedConfigVersion = typeof SUPPORTED_ENHANCED_CONFIG_VERSIONS[number]
 
 // =============================================================================
 // EXPORTS AND VERSION INFO
@@ -716,12 +959,46 @@ export * from './streaming'
 export * from './security'
 
 /**
- * Configuration types module version
+ * Enhanced configuration types module version
  */
-export const CONFIG_TYPES_VERSION = '1.0.0'
+export const ENHANCED_CONFIG_TYPES_VERSION = '1.3.0'
 
 /**
- * Supported configuration format versions
+ * Phase 1.3 feature flags
  */
-export const SUPPORTED_CONFIG_VERSIONS = ['1.0.0'] as const
-export type ConfigVersion = typeof SUPPORTED_CONFIG_VERSIONS[number]
+export const PHASE_13_FEATURES = {
+  ENHANCED_AUTH: 'enhanced_auth',
+  ADVANCED_GATEWAY: 'advanced_gateway',
+  COMPREHENSIVE_ERROR_HANDLING: 'comprehensive_error_handling',
+  ENTERPRISE_AUDIT: 'enterprise_audit',
+  ADVANCED_SECURITY: 'advanced_security',
+  PERFORMANCE_MONITORING: 'performance_monitoring'
+} as const
+
+export type Phase13Feature = typeof PHASE_13_FEATURES[keyof typeof PHASE_13_FEATURES]
+
+/**
+ * Configuration migration utilities for Phase 1.3
+ */
+export interface ConfigurationMigration {
+  fromVersion: string
+  toVersion: string
+  migrationFunction: (oldConfig: any) => EnhancedApiConfiguration
+  validationRules: Array<(config: any) => ValidationError[]>
+  backupRequired: boolean
+}
+
+/**
+ * Phase 1.3 configuration health check
+ */
+export interface ConfigurationHealthCheck {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  checks: Array<{
+    name: string
+    status: 'pass' | 'warn' | 'fail'
+    message?: string
+    metadata?: Record<string, any>
+  }>
+  lastChecked: string
+  nextCheck: string
+}
