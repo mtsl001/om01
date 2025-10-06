@@ -1,12 +1,18 @@
 // apps/api/server.ts
 
 /**
- * ReadyAI API Server - Production-grade Express server with Cline-accelerated patterns
+ * ReadyAI API Server - Production-grade Express server with Cline-accelerated patterns (Updated for Phase 2.1)
  * 
  * This server implementation leverages Cline's proven extension activation patterns
  * and service coordination architecture, adapted for ReadyAI's comprehensive API
  * gateway system with integrated authentication, error handling, and modular
  * controller registration.
+ * 
+ * PHASE 2.1 UPDATE: Added Project Management Module Integration
+ * - Project management controller registration
+ * - Project orchestration middleware integration
+ * - Enhanced dependency injection for project services
+ * - Project-specific route registration and middleware
  * 
  * Key Adaptations from Cline:
  * - Extension activation patterns from Cline's extension.ts startup sequence
@@ -16,6 +22,8 @@
  * - Authentication middleware from Cline's AuthService patterns
  * - Module registration from Cline's provider system initialization
  * - Graceful shutdown patterns from Cline's resource cleanup
+ * - Project lifecycle management from Cline's TaskManager patterns (NEW)
+ * - Project orchestration from Cline's TaskExecutor coordination (NEW)
  * 
  * ReadyAI Extensions:
  * - Comprehensive API Gateway middleware stack
@@ -26,6 +34,8 @@
  * - Request/response validation and transformation
  * - Rate limiting and security middleware
  * - Comprehensive telemetry and monitoring integration
+ * - Project management lifecycle and orchestration (Phase 2.1)
+ * - Project-aware context management and validation (Phase 2.1)
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
@@ -83,7 +93,25 @@ import { ValidationMiddleware } from '../../packages/api-gateway/middleware/Vali
 import { RateLimitingMiddleware } from '../../packages/api-gateway/middleware/RateLimitingMiddleware';
 import { ApiDocumentationService } from '../../packages/api-gateway/services/ApiDocumentationService';
 
-// Controller Dependencies - All phases
+// Project Management Dependencies (Phase 2.1 - NEW)
+import { ProjectService } from '../../packages/project-management/services/ProjectService';
+import { ProjectOrchestrator } from '../../packages/project-management/services/ProjectOrchestrator';
+import { ProjectStateManager } from '../../packages/project-management/services/ProjectStateManager';
+import { ProjectWorkspaceManager } from '../../packages/project-management/services/ProjectWorkspaceManager';
+import { ProjectCreationService } from '../../packages/project-management/services/ProjectCreationService';
+import { ProjectConfigurationService } from '../../packages/project-management/services/ProjectConfigurationService';
+import { ProjectValidator } from '../../packages/project-management/services/ProjectValidator';
+import { ProjectEventService } from '../../packages/project-management/services/ProjectEventService';
+import { PhaseManager } from '../../packages/project-management/services/PhaseManager';
+import { ServiceCoordinator } from '../../packages/project-management/services/ServiceCoordinator';
+
+// Project Management Repository Dependencies (Phase 2.1 - NEW)
+import { ProjectRepository } from '../../packages/project-management/repositories/ProjectRepository';
+import { ProjectStateRepository } from '../../packages/project-management/repositories/ProjectStateRepository';
+import { ProjectMetadataService } from '../../packages/project-management/services/ProjectMetadataService';
+import { ProjectSettingsService } from '../../packages/project-management/services/ProjectSettingsService';
+
+// Controller Dependencies - All phases including Phase 2.1
 import { ConfigController } from '../../packages/config/controllers/ConfigController';
 import { LoggingController } from '../../packages/logging/controllers/LoggingController';
 import { DatabaseController } from '../../packages/database/controllers/DatabaseController';
@@ -92,9 +120,14 @@ import { ErrorController } from '../../packages/error-handling/controllers/Error
 import { AuthController } from '../../packages/auth/controllers/AuthController';
 import { GatewayController } from '../../packages/api-gateway/controllers/GatewayController';
 
+// Project Management Controllers (Phase 2.1 - NEW)
+import { ProjectController } from '../../packages/project-management/controllers/ProjectController';
+import { ProjectOrchestrationController } from '../../packages/project-management/controllers/ProjectOrchestrationController';
+import { ProjectSettingsController } from '../../packages/project-management/controllers/ProjectSettingsController';
+
 /**
- * Enhanced server configuration interface with comprehensive Phase 1.3 options
- * Adapted from Cline's configuration patterns with ReadyAI gateway extensions
+ * Enhanced server configuration interface with comprehensive Phase 2.1 options
+ * Adapted from Cline's configuration patterns with ReadyAI gateway and project management extensions
  */
 export interface ReadyAIServerConfig {
   /** Server port */
@@ -147,10 +180,27 @@ export interface ReadyAIServerConfig {
     enableRefreshTokens: boolean;
     refreshTokenExpiry: number;
   };
+  /** Project Management configuration (Phase 2.1 - NEW) */
+  projectManagement: {
+    enabled: boolean;
+    enableOrchestration: boolean;
+    enableWorkspaceManagement: boolean;
+    enablePhaseProgression: boolean;
+    maxConcurrentProjects: number;
+    projectTimeoutMs: number;
+    enableProjectMetrics: boolean;
+    enableProjectEvents: boolean;
+    defaultProjectSettings: {
+      enableAutoSave: boolean;
+      autoSaveIntervalMs: number;
+      enableVersioning: boolean;
+      maxVersionHistory: number;
+    };
+  };
 }
 
 /**
- * Enhanced default server configuration optimized for ReadyAI Phase 1.3 deployment
+ * Enhanced default server configuration optimized for ReadyAI Phase 2.1 deployment
  */
 const DEFAULT_SERVER_CONFIG: ReadyAIServerConfig = {
   port: parseInt(process.env.PORT || '8000', 10),
@@ -190,10 +240,27 @@ const DEFAULT_SERVER_CONFIG: ReadyAIServerConfig = {
     enableRefreshTokens: true,
     refreshTokenExpiry: 7 * 24 * 60 * 60 * 1000, // 7 days
   },
+  // Phase 2.1 Project Management Configuration (NEW)
+  projectManagement: {
+    enabled: true,
+    enableOrchestration: true,
+    enableWorkspaceManagement: true,
+    enablePhaseProgression: true,
+    maxConcurrentProjects: parseInt(process.env.MAX_CONCURRENT_PROJECTS || '10', 10),
+    projectTimeoutMs: parseInt(process.env.PROJECT_TIMEOUT_MS || '300000', 10), // 5 minutes
+    enableProjectMetrics: true,
+    enableProjectEvents: true,
+    defaultProjectSettings: {
+      enableAutoSave: true,
+      autoSaveIntervalMs: 30000, // 30 seconds
+      enableVersioning: true,
+      maxVersionHistory: 50,
+    },
+  },
 };
 
 /**
- * Enhanced controller registration metadata for Phase 1.3 modular architecture
+ * Enhanced controller registration metadata for Phase 2.1 modular architecture
  * Following Cline's provider registration patterns with gateway integration
  */
 interface ControllerRegistration {
@@ -211,10 +278,14 @@ interface ControllerRegistration {
     maxRequests: number;
   };
   middleware?: express.RequestHandler[];
+  // Phase 2.1 enhancements (NEW)
+  projectAware?: boolean;
+  phaseRequirements?: PhaseType[];
+  dependsOn?: string[];
 }
 
 /**
- * Enhanced server metrics for comprehensive Phase 1.3 monitoring
+ * Enhanced server metrics for comprehensive Phase 2.1 monitoring
  * Adapted from Cline's telemetry collection patterns
  */
 interface ServerMetrics {
@@ -225,6 +296,13 @@ interface ServerMetrics {
   authenticatedSessions: number;
   failedAuthAttempts: number;
   gatewayRequests: number;
+  // Phase 2.1 project metrics (NEW)
+  activeProjects: number;
+  totalProjectsCreated: number;
+  projectOperations: number;
+  orchestrationRequests: number;
+  phaseTransitions: number;
+  projectErrors: number;
   uptime: () => number;
   memoryUsage: NodeJS.MemoryUsage;
   registeredControllers: number;
@@ -232,7 +310,7 @@ interface ServerMetrics {
 }
 
 /**
- * Enhanced Dependency Injection Container for Phase 1.3
+ * Enhanced Dependency Injection Container for Phase 2.1
  * Production-grade service management following enterprise patterns
  */
 class ServiceContainer {
@@ -310,7 +388,7 @@ class ServiceContainer {
 }
 
 /**
- * ReadyAI API Server - Enterprise-grade Express server with Phase 1.3 capabilities
+ * ReadyAI API Server - Enterprise-grade Express server with Phase 2.1 capabilities
  * 
  * Implements Cline's proven server architecture enhanced with:
  * - Comprehensive API Gateway middleware stack
@@ -322,6 +400,9 @@ class ServiceContainer {
  * - Rate limiting and security middleware
  * - Performance monitoring and telemetry integration
  * - Graceful startup and shutdown sequences
+ * - Project management lifecycle and orchestration (Phase 2.1)
+ * - Project-aware request routing and validation (Phase 2.1)
+ * - Multi-project coordination and state management (Phase 2.1)
  */
 export class ReadyAIServer {
   private readonly app: Express;
@@ -334,6 +415,10 @@ export class ReadyAIServer {
   private readonly errorService: ErrorService;
   private readonly authService: AuthService;
   private readonly gatewayService: GatewayService;
+  // Phase 2.1 Project Management Services (NEW)
+  private readonly projectService: ProjectService;
+  private readonly projectOrchestrator: ProjectOrchestrator;
+  private readonly serviceCoordinator: ServiceCoordinator;
   private isShuttingDown = false;
   private shutdownTimeout?: NodeJS.Timeout;
 
@@ -354,6 +439,7 @@ export class ReadyAIServer {
       enablePhaseTracking: true,
       enableAuthentication: true,
       enableGateway: true,
+      enableProjectManagement: this.config.projectManagement.enabled, // Phase 2.1
     };
     this.logger = Logger.getInstance(loggerConfig);
 
@@ -364,8 +450,13 @@ export class ReadyAIServer {
     this.errorService = this.container.get<ErrorService>('errorService');
     this.authService = this.container.get<AuthService>('authService');
     this.gatewayService = this.container.get<GatewayService>('gatewayService');
+    
+    // Phase 2.1 Project Management Services (NEW)
+    this.projectService = this.container.get<ProjectService>('projectService');
+    this.projectOrchestrator = this.container.get<ProjectOrchestrator>('projectOrchestrator');
+    this.serviceCoordinator = this.container.get<ServiceCoordinator>('serviceCoordinator');
 
-    // Initialize enhanced metrics
+    // Initialize enhanced metrics with Phase 2.1 support
     this.metrics = {
       startTime: new Date(),
       requestCount: 0,
@@ -374,6 +465,13 @@ export class ReadyAIServer {
       authenticatedSessions: 0,
       failedAuthAttempts: 0,
       gatewayRequests: 0,
+      // Phase 2.1 metrics (NEW)
+      activeProjects: 0,
+      totalProjectsCreated: 0,
+      projectOperations: 0,
+      orchestrationRequests: 0,
+      phaseTransitions: 0,
+      projectErrors: 0,
       uptime: () => Date.now() - this.metrics.startTime.getTime(),
       memoryUsage: process.memoryUsage(),
       registeredControllers: 0,
@@ -384,17 +482,21 @@ export class ReadyAIServer {
   }
 
   /**
-   * Initialize core services in dependency injection container
-   * Following Cline's service initialization patterns with Phase 1.3 enhancements
+   * Initialize core services in dependency injection container with Phase 2.1 enhancements
+   * Following Cline's service initialization patterns with project management integration
    */
   private initializeCoreServices(): void {
     try {
-      this.logger.info('Initializing ReadyAI core services...', 'server');
+      this.logger.info('Initializing ReadyAI Phase 2.1 core services...', 'server');
 
       // Register repositories (no dependencies)
       this.container.register('configRepository', () => new ConfigRepository());
       this.container.register('databaseRepository', () => new DatabaseRepository());
       this.container.register('vectorRepository', () => new VectorRepository());
+      
+      // Phase 2.1 Project Management Repositories (NEW)
+      this.container.register('projectRepository', () => new ProjectRepository());
+      this.container.register('projectStateRepository', () => new ProjectStateRepository());
       
       // Register utility services
       this.container.register('configNormalizer', () => new ConfigNormalizer());
@@ -440,6 +542,8 @@ export class ReadyAIServer {
           enableCircuitBreaker: true,
           enableRetry: true,
           maxRetries: 3,
+          // Phase 2.1 Project-aware routing (NEW)
+          enableProjectRouting: this.config.projectManagement.enabled,
         }, this.logger);
       });
 
@@ -448,6 +552,8 @@ export class ReadyAIServer {
           enableRequestValidation: this.config.gateway.enableValidation,
           enableResponseValidation: this.config.gateway.enableValidation,
           enableSchemaCache: true,
+          // Phase 2.1 Project validation (NEW)
+          enableProjectValidation: this.config.projectManagement.enabled,
         }, this.logger);
       });
 
@@ -457,6 +563,8 @@ export class ReadyAIServer {
           defaultMaxRequests: this.config.rateLimit.maxRequests,
           enableDistributedLimiting: false,
           enableUserSpecificLimits: true,
+          // Phase 2.1 Project-aware rate limiting (NEW)
+          enableProjectSpecificLimits: this.config.projectManagement.enabled,
         }, this.logger);
       });
 
@@ -464,8 +572,10 @@ export class ReadyAIServer {
         return new ApiDocumentationService({
           enabled: this.config.gateway.enableDocumentation,
           title: 'ReadyAI API',
-          version: '1.0.0',
-          description: 'ReadyAI Personal AI Development Orchestrator API',
+          version: '2.1.0', // Updated for Phase 2.1
+          description: 'ReadyAI Personal AI Development Orchestrator API with Project Management',
+          // Phase 2.1 documentation enhancements (NEW)
+          includeProjectManagement: this.config.projectManagement.enabled,
         }, this.logger);
       });
 
@@ -485,6 +595,8 @@ export class ReadyAIServer {
             enableMetrics: this.config.gateway.enableMetrics,
             enableHealthChecks: true,
             enableRequestTracing: true,
+            // Phase 2.1 Project integration (NEW)
+            enableProjectIntegration: this.config.projectManagement.enabled,
           },
           this.logger
         );
@@ -505,7 +617,9 @@ export class ReadyAIServer {
             retryDelayMs: 1000,
             enableCaching: true,
             cacheTtlMs: 300000, // 5 minutes
-            enableBackgroundSync: false
+            enableBackgroundSync: false,
+            // Phase 2.1 Project integration (NEW)
+            enableProjectIntegration: this.config.projectManagement.enabled,
           },
           this.logger
         );
@@ -525,7 +639,9 @@ export class ReadyAIServer {
             enableQueryLogging: this.config.environment === 'development',
             enableAutoMigrations: true,
             enableTransactionSupport: true,
-            enableQueryOptimization: true
+            enableQueryOptimization: true,
+            // Phase 2.1 Project support (NEW)
+            enableProjectTables: this.config.projectManagement.enabled,
           },
           this.logger
         );
@@ -539,7 +655,9 @@ export class ReadyAIServer {
             migrationsPath: './migrations',
             enableAutoMigrations: true,
             enableRollback: true,
-            enableBackup: true
+            enableBackup: true,
+            // Phase 2.1 Project migrations (NEW)
+            includeProjectMigrations: this.config.projectManagement.enabled,
           },
           this.logger
         );
@@ -555,7 +673,9 @@ export class ReadyAIServer {
             cacheTtlMs: 3600000, // 1 hour
             batchSize: 100,
             enableRetry: true,
-            maxRetryAttempts: 3
+            maxRetryAttempts: 3,
+            // Phase 2.1 Project context (NEW)
+            enableProjectContext: this.config.projectManagement.enabled,
           },
           this.logger
         );
@@ -576,13 +696,20 @@ export class ReadyAIServer {
             enableCaching: true,
             cacheTtlMs: 300000, // 5 minutes
             defaultTopK: 10,
-            defaultThreshold: 0.7
+            defaultThreshold: 0.7,
+            // Phase 2.1 Project collections (NEW)
+            enableProjectCollections: this.config.projectManagement.enabled,
           },
           this.logger
         );
       }, ['vectorRepository', 'embeddingService']);
 
-      this.logger.info('ReadyAI core services initialized successfully', 'server');
+      // Phase 2.1 Project Management Services (NEW)
+      if (this.config.projectManagement.enabled) {
+        this.registerProjectManagementServices();
+      }
+
+      this.logger.info('ReadyAI Phase 2.1 core services initialized successfully', 'server');
 
     } catch (error) {
       this.logger.logError(error as Error, 'server', { operation: 'initializeCoreServices' });
@@ -595,8 +722,246 @@ export class ReadyAIServer {
   }
 
   /**
-   * Initialize server with comprehensive Phase 1.3 middleware pipeline
-   * Following Cline's proven middleware patterns with ReadyAI gateway enhancements
+   * Register Phase 2.1 Project Management Services (NEW)
+   * Following Cline's TaskManager and WorkspaceManager patterns
+   */
+  private registerProjectManagementServices(): void {
+    this.logger.info('Registering Phase 2.1 Project Management services...', 'server');
+
+    // Project Validation Service
+    this.container.register('projectValidator', () => {
+      const configService = this.container.get<ConfigService>('configService');
+      return new ProjectValidator(configService, {
+        enableStrictValidation: true,
+        validateProjectStructure: true,
+        validatePhaseRequirements: this.config.projectManagement.enablePhaseProgression,
+        maxProjectNameLength: 100,
+        allowedProjectTypes: ['web', 'api', 'mobile', 'desktop', 'ml', 'data'],
+      }, this.logger);
+    }, ['configService']);
+
+    // Project Creation Service
+    this.container.register('projectCreationService', () => {
+      const projectValidator = this.container.get<ProjectValidator>('projectValidator');
+      const databaseService = this.container.get<DatabaseService>('databaseService');
+      return new ProjectCreationService(
+        projectValidator,
+        databaseService,
+        {
+          enableTemplateSupport: true,
+          defaultTemplate: 'basic',
+          enableWorkspaceSetup: this.config.projectManagement.enableWorkspaceManagement,
+          autoCreateDirectories: true,
+          enableGitInitialization: true,
+        },
+        this.logger
+      );
+    }, ['projectValidator', 'databaseService']);
+
+    // Project Configuration Service
+    this.container.register('projectConfigurationService', () => {
+      const configService = this.container.get<ConfigService>('configService');
+      return new ProjectConfigurationService(
+        configService,
+        {
+          enableInheritance: true,
+          enableOverrides: true,
+          validateOnChange: true,
+          enableEncryption: false, // Local-only mode
+          autoSave: this.config.projectManagement.defaultProjectSettings.enableAutoSave,
+          autoSaveInterval: this.config.projectManagement.defaultProjectSettings.autoSaveIntervalMs,
+        },
+        this.logger
+      );
+    }, ['configService']);
+
+    // Project State Manager (adapted from Cline's TaskManager)
+    this.container.register('projectStateManager', () => {
+      const projectStateRepository = this.container.get<ProjectStateRepository>('projectStateRepository');
+      return new ProjectStateManager(
+        projectStateRepository,
+        {
+          enableVersioning: this.config.projectManagement.defaultProjectSettings.enableVersioning,
+          maxVersionHistory: this.config.projectManagement.defaultProjectSettings.maxVersionHistory,
+          enableStateValidation: true,
+          enableRollback: true,
+          persistenceInterval: 5000, // 5 seconds
+          enableCompression: true,
+        },
+        this.logger
+      );
+    }, ['projectStateRepository']);
+
+    // Project Workspace Manager (adapted from Cline's WorkspaceManager)
+    this.container.register('projectWorkspaceManager', () => {
+      const projectStateManager = this.container.get<ProjectStateManager>('projectStateManager');
+      return new ProjectWorkspaceManager(
+        projectStateManager,
+        {
+          workspaceRoot: process.env.READYAI_WORKSPACE_ROOT || './projects',
+          enableFileWatching: true,
+          enableAutoSync: true,
+          enableBackup: true,
+          backupInterval: 300000, // 5 minutes
+          maxWorkspaces: this.config.projectManagement.maxConcurrentProjects,
+          enableCleanup: true,
+        },
+        this.logger
+      );
+    }, ['projectStateManager']);
+
+    // Project Event Service
+    this.container.register('projectEventService', () => {
+      return new ProjectEventService({
+        enableEventLogging: this.config.projectManagement.enableProjectEvents,
+        enableEventMetrics: this.config.projectManagement.enableProjectMetrics,
+        enableEventPersistence: true,
+        maxEventHistory: 10000,
+        enableEventFiltering: true,
+        enableRealTimeEvents: true,
+      }, this.logger);
+    });
+
+    // Project Metadata Service
+    this.container.register('projectMetadataService', () => {
+      const databaseService = this.container.get<DatabaseService>('databaseService');
+      return new ProjectMetadataService(
+        databaseService,
+        {
+          enableIndexing: true,
+          enableSearching: true,
+          enableTagging: true,
+          enableAnalytics: this.config.projectManagement.enableProjectMetrics,
+          maxTagsPerProject: 20,
+          enableAutoTags: true,
+        },
+        this.logger
+      );
+    }, ['databaseService']);
+
+    // Project Settings Service
+    this.container.register('projectSettingsService', () => {
+      const projectConfigurationService = this.container.get<ProjectConfigurationService>('projectConfigurationService');
+      return new ProjectSettingsService(
+        projectConfigurationService,
+        {
+          enableUserPreferences: true,
+          enableProjectOverrides: true,
+          enableSettingsValidation: true,
+          enableSettingsEncryption: false, // Local-only
+          autoSaveSettings: true,
+          settingsVersion: '2.1.0',
+        },
+        this.logger
+      );
+    }, ['projectConfigurationService']);
+
+    // Phase Manager (Phase 2.1 specific)
+    this.container.register('phaseManager', () => {
+      const projectStateManager = this.container.get<ProjectStateManager>('projectStateManager');
+      const projectEventService = this.container.get<ProjectEventService>('projectEventService');
+      return new PhaseManager(
+        projectStateManager,
+        projectEventService,
+        {
+          enablePhaseValidation: true,
+          enablePhaseGates: true,
+          enablePhaseRollback: true,
+          enablePhaseMetrics: this.config.projectManagement.enableProjectMetrics,
+          phaseTimeout: this.config.projectManagement.projectTimeoutMs,
+          enableParallelPhases: false, // Sequential for now
+        },
+        this.logger
+      );
+    }, ['projectStateManager', 'projectEventService']);
+
+    // Service Coordinator (adapted from Cline's service coordination patterns)
+    this.container.register('serviceCoordinator', () => {
+      const configService = this.container.get<ConfigService>('configService');
+      const databaseService = this.container.get<DatabaseService>('databaseService');
+      const vectorDatabaseService = this.container.get<VectorDatabaseService>('vectorDatabaseService');
+      const authService = this.container.get<AuthService>('authService');
+      const gatewayService = this.container.get<GatewayService>('gatewayService');
+      const errorService = this.container.get<ErrorService>('errorService');
+      
+      return new ServiceCoordinator(
+        {
+          config: configService,
+          database: databaseService,
+          vectorDatabase: vectorDatabaseService,
+          auth: authService,
+          gateway: gatewayService,
+          error: errorService,
+        },
+        {
+          enableHealthMonitoring: true,
+          enableDependencyTracking: true,
+          enableServiceMetrics: this.config.projectManagement.enableProjectMetrics,
+          enableCircuitBreaker: true,
+          enableRetry: true,
+          maxRetryAttempts: 3,
+          retryDelayMs: 1000,
+        },
+        this.logger
+      );
+    }, ['configService', 'databaseService', 'vectorDatabaseService', 'authService', 'gatewayService', 'errorService']);
+
+    // Project Orchestrator (adapted from Cline's TaskExecutor)
+    this.container.register('projectOrchestrator', () => {
+      const phaseManager = this.container.get<PhaseManager>('phaseManager');
+      const serviceCoordinator = this.container.get<ServiceCoordinator>('serviceCoordinator');
+      const projectEventService = this.container.get<ProjectEventService>('projectEventService');
+      
+      return new ProjectOrchestrator(
+        phaseManager,
+        serviceCoordinator,
+        projectEventService,
+        {
+          enableOrchestration: this.config.projectManagement.enableOrchestration,
+          maxConcurrentOperations: this.config.projectManagement.maxConcurrentProjects,
+          operationTimeout: this.config.projectManagement.projectTimeoutMs,
+          enableOperationMetrics: this.config.projectManagement.enableProjectMetrics,
+          enableOperationEvents: this.config.projectManagement.enableProjectEvents,
+          enableRollback: true,
+          enableRecovery: true,
+        },
+        this.logger
+      );
+    }, ['phaseManager', 'serviceCoordinator', 'projectEventService']);
+
+    // Main Project Service (coordination layer)
+    this.container.register('projectService', () => {
+      const projectRepository = this.container.get<ProjectRepository>('projectRepository');
+      const projectCreationService = this.container.get<ProjectCreationService>('projectCreationService');
+      const projectWorkspaceManager = this.container.get<ProjectWorkspaceManager>('projectWorkspaceManager');
+      const projectMetadataService = this.container.get<ProjectMetadataService>('projectMetadataService');
+      const projectSettingsService = this.container.get<ProjectSettingsService>('projectSettingsService');
+      
+      return new ProjectService(
+        projectRepository,
+        projectCreationService,
+        projectWorkspaceManager,
+        projectMetadataService,
+        projectSettingsService,
+        {
+          enableProjectValidation: true,
+          enableProjectMetrics: this.config.projectManagement.enableProjectMetrics,
+          enableProjectEvents: this.config.projectManagement.enableProjectEvents,
+          maxProjectsPerUser: this.config.projectManagement.maxConcurrentProjects,
+          enableProjectSharing: false, // Local-only mode
+          enableProjectTemplates: true,
+          defaultProjectSettings: this.config.projectManagement.defaultProjectSettings,
+        },
+        this.logger
+      );
+    }, ['projectRepository', 'projectCreationService', 'projectWorkspaceManager', 'projectMetadataService', 'projectSettingsService']);
+
+    this.logger.info('Phase 2.1 Project Management services registered successfully', 'server');
+  }
+
+  /**
+   * Initialize server with comprehensive Phase 2.1 middleware pipeline
+   * Following Cline's proven middleware patterns with ReadyAI gateway and project management enhancements
    */
   private initializeServer(): void {
     // Trust proxy if in production (for load balancers)
@@ -645,6 +1010,12 @@ export class ReadyAIServer {
         'X-Gateway-Route',
         'X-Auth-Token',
         'X-Refresh-Token',
+        // Phase 2.1 Project Management headers (NEW)
+        'X-Project-Name',
+        'X-Project-Version',
+        'X-Project-Phase',
+        'X-Orchestration-ID',
+        'X-Workspace-Path',
       ],
       credentials: true,
       maxAge: 86400, // 24 hours
@@ -678,7 +1049,7 @@ export class ReadyAIServer {
       this.setupGatewayMiddleware();
     }
 
-    // Enhanced rate limiting middleware
+    // Enhanced rate limiting middleware with Phase 2.1 project-aware limits
     if (this.config.enableRateLimit) {
       const limiter = rateLimit({
         windowMs: this.config.rateLimit.windowMs,
@@ -694,10 +1065,18 @@ export class ReadyAIServer {
         standardHeaders: true,
         legacyHeaders: false,
         keyGenerator: (req: Request) => {
-          // Enhanced key generation with user context
+          // Enhanced key generation with user and project context (Phase 2.1)
           const userId = (req as any).user?.id;
+          const projectId = (req as any).projectId;
           const ip = req.ip || 'unknown';
-          return userId ? `user:${userId}` : `ip:${ip}`;
+          
+          if (userId && projectId) {
+            return `user:${userId}:project:${projectId}`;
+          } else if (userId) {
+            return `user:${userId}`;
+          } else {
+            return `ip:${ip}`;
+          }
         },
         handler: (req: Request, res: Response) => {
           this.metrics.errorCount++;
@@ -706,6 +1085,8 @@ export class ReadyAIServer {
             method: req.method,
             path: req.path,
             correlationId: (req as any).correlationId,
+            projectId: (req as any).projectId, // Phase 2.1
+            userId: (req as any).user?.id,
           });
           
           const error: ApiErrorResponse = createApiError(
@@ -716,6 +1097,7 @@ export class ReadyAIServer {
               retryAfter: this.config.rateLimit.windowMs / 1000,
               windowMs: this.config.rateLimit.windowMs,
               maxRequests: this.config.rateLimit.maxRequests,
+              projectAware: this.config.projectManagement.enabled, // Phase 2.1
             }
           );
           res.status(429).json(error);
@@ -724,7 +1106,7 @@ export class ReadyAIServer {
       this.app.use(limiter);
     }
 
-    // Request correlation and logging middleware (Enhanced)
+    // Request correlation and logging middleware (Enhanced with Phase 2.1 support)
     this.setupRequestMiddleware();
 
     // Authentication middleware (Phase 1.3)
@@ -732,13 +1114,18 @@ export class ReadyAIServer {
       this.setupAuthenticationMiddleware();
     }
 
+    // Project context middleware (Phase 2.1 - NEW)
+    if (this.config.projectManagement.enabled) {
+      this.setupProjectContextMiddleware();
+    }
+
     // Initialize core routes
     this.setupCoreRoutes();
 
-    // Error handling middleware (must be last) - Enhanced with Phase 1.3 patterns
+    // Error handling middleware (must be last) - Enhanced with Phase 2.1 patterns
     this.setupErrorHandling();
 
-    this.logger.info('ReadyAI server initialized with Phase 1.3 capabilities', 'server', {
+    this.logger.info('ReadyAI server initialized with Phase 2.1 capabilities', 'server', {
       config: {
         port: this.config.port,
         host: this.config.host,
@@ -750,6 +1137,7 @@ export class ReadyAIServer {
         security: this.config.security.enableHelmet,
         gateway: this.config.gateway.enabled,
         auth: this.config.auth.enabled,
+        projectManagement: this.config.projectManagement.enabled, // Phase 2.1
       },
       services: {
         registeredServices: this.container.getDependencyGraph(),
@@ -758,7 +1146,98 @@ export class ReadyAIServer {
   }
 
   /**
-   * Setup API Gateway middleware stack (Phase 1.3)
+   * Setup Project Context Middleware (Phase 2.1 - NEW)
+   * Following Cline's task context patterns adapted for project management
+   */
+  private setupProjectContextMiddleware(): void {
+    this.logger.info('Setting up Project Context middleware', 'server');
+
+    // Project context extraction and validation
+    this.app.use(async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const projectId = req.headers['x-project-id'] as string;
+        const projectName = req.headers['x-project-name'] as string;
+        const projectPhase = req.headers['x-project-phase'] as PhaseType;
+        const orchestrationId = req.headers['x-orchestration-id'] as string;
+
+        // Add project context to request
+        (req as any).projectContext = {
+          projectId,
+          projectName,
+          projectPhase,
+          orchestrationId,
+          startTime: Date.now(),
+        };
+
+        // Validate project context for project-aware routes
+        if (req.path.startsWith('/api/v1/projects') && projectId) {
+          try {
+            const project = await this.projectService.getProject(projectId as UUID);
+            if (project) {
+              (req as any).project = project;
+              this.metrics.activeProjects = await this.projectService.getActiveProjectCount();
+            } else {
+              this.logger.warn('Project not found for request', 'server', {
+                projectId,
+                path: req.path,
+                correlationId: (req as any).correlationId,
+              });
+            }
+          } catch (error) {
+            this.logger.warn('Error loading project context', 'server', {
+              projectId,
+              error: (error as Error).message,
+              correlationId: (req as any).correlationId,
+            });
+          }
+        }
+
+        // Update project metrics
+        if (projectId) {
+          this.metrics.projectOperations++;
+        }
+
+        if (orchestrationId) {
+          this.metrics.orchestrationRequests++;
+        }
+
+        next();
+      } catch (error) {
+        this.logger.logError(error as Error, 'server', { 
+          operation: 'projectContextMiddleware',
+          correlationId: (req as any).correlationId,
+        });
+        next(error);
+      }
+    });
+
+    // Project-aware logging enhancement
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      const originalSend = res.send;
+      res.send = function(body: any) {
+        const projectContext = (req as any).projectContext;
+        if (projectContext && projectContext.projectId) {
+          const duration = Date.now() - projectContext.startTime;
+          Logger.getInstance().info('Project request completed', 'project', {
+            projectId: projectContext.projectId,
+            projectName: projectContext.projectName,
+            projectPhase: projectContext.projectPhase,
+            orchestrationId: projectContext.orchestrationId,
+            path: req.path,
+            method: req.method,
+            duration,
+            statusCode: res.statusCode,
+            correlationId: (req as any).correlationId,
+          });
+        }
+        return originalSend.call(this, body);
+      };
+      next();
+    });
+  }
+
+  /**
+   * Setup API Gateway middleware stack (Phase 1.3 with Phase 2.1 enhancements)
    * Adapted from Cline's WebviewProvider middleware patterns
    */
   private setupGatewayMiddleware(): void {
@@ -768,12 +1247,15 @@ export class ReadyAIServer {
     this.app.use((req: Request, res: Response, next: NextFunction) => {
       this.metrics.gatewayRequests++;
       
-      // Add gateway context
+      // Add gateway context with Phase 2.1 project awareness
       (req as any).gateway = {
         startTime: Date.now(),
         route: req.path,
         method: req.method,
         version: req.headers['api-version'] || 'v1',
+        // Phase 2.1 enhancements (NEW)
+        projectAware: req.path.startsWith('/api/v1/projects'),
+        orchestrationAware: req.path.includes('/orchestration'),
       };
 
       // Gateway request validation
@@ -785,7 +1267,7 @@ export class ReadyAIServer {
       next();
     });
 
-    // Gateway request routing
+    // Gateway request routing with Phase 2.1 project routing
     this.app.use((req: Request, res: Response, next: NextFunction) => {
       const requestRouter = this.container.get<RequestRouter>('requestRouter');
       return requestRouter.route(req, res, next);
@@ -804,6 +1286,10 @@ export class ReadyAIServer {
             duration,
             statusCode: res.statusCode,
             correlationId: (req as any).correlationId,
+            // Phase 2.1 context (NEW)
+            projectAware: gateway.projectAware,
+            orchestrationAware: gateway.orchestrationAware,
+            projectId: (req as any).projectContext?.projectId,
           });
         }
         return originalSend.call(this, body);
@@ -814,7 +1300,7 @@ export class ReadyAIServer {
 
   /**
    * Setup enhanced request correlation and logging middleware
-   * Adapted from Cline's request tracking patterns with Phase 1.3 enhancements
+   * Adapted from Cline's request tracking patterns with Phase 2.1 enhancements
    */
   private setupRequestMiddleware(): void {
     // Enhanced request correlation middleware
@@ -824,6 +1310,9 @@ export class ReadyAIServer {
       const projectId = req.headers['x-project-id'] as string;
       const sessionId = req.headers['x-session-id'] as string;
       const phaseType = req.headers['x-phase-type'] as PhaseType;
+      // Phase 2.1 headers (NEW)
+      const orchestrationId = req.headers['x-orchestration-id'] as string;
+      const workspacePath = req.headers['x-workspace-path'] as string;
 
       // Attach to request for downstream use
       (req as any).correlationId = correlationId;
@@ -831,18 +1320,27 @@ export class ReadyAIServer {
       (req as any).projectId = projectId;
       (req as any).sessionId = sessionId;
       (req as any).phaseType = phaseType;
+      // Phase 2.1 context (NEW)
+      (req as any).orchestrationId = orchestrationId;
+      (req as any).workspacePath = workspacePath;
 
       // Set response headers
       res.setHeader('X-Request-ID', requestId);
       res.setHeader('X-Correlation-ID', correlationId);
-      res.setHeader('X-Server-Version', '1.0.0');
+      res.setHeader('X-Server-Version', '2.1.0'); // Updated for Phase 2.1
       res.setHeader('X-Phase-Support', 'all');
+      // Phase 2.1 headers (NEW)
+      res.setHeader('X-Project-Management', this.config.projectManagement.enabled ? 'enabled' : 'disabled');
+      res.setHeader('X-Orchestration-Support', this.config.projectManagement.enableOrchestration ? 'enabled' : 'disabled');
 
       // Start correlation context in logger
       this.logger.startCorrelation({
         projectId: projectId as UUID,
         sessionId,
         phaseType,
+        // Phase 2.1 context (NEW)
+        orchestrationId,
+        workspacePath,
       });
 
       // Update metrics
@@ -867,6 +1365,9 @@ export class ReadyAIServer {
           projectId: (req as any).projectId,
           sessionId: (req as any).sessionId,
           phaseType: (req as any).phaseType,
+          // Phase 2.1 context (NEW)
+          orchestrationId: (req as any).orchestrationId,
+          workspacePath: (req as any).workspacePath,
         });
 
         // Enhanced response completion logging
@@ -884,6 +1385,9 @@ export class ReadyAIServer {
             contentLength: res.get('content-length'),
             gateway: (req as any).gateway,
             user: (req as any).user?.id,
+            // Phase 2.1 context (NEW)
+            project: (req as any).project?.id,
+            projectContext: (req as any).projectContext,
           });
 
           return originalSend.call(this, body);
@@ -934,10 +1438,16 @@ export class ReadyAIServer {
     // Authentication middleware for protected routes
     const authMiddleware = this.container.get<AuthMiddleware>('authMiddleware');
     this.app.use('/api/v1/protected', authMiddleware.requireAuth.bind(authMiddleware));
+    
+    // Phase 2.1 Project management routes require authentication (NEW)
+    if (this.config.projectManagement.enabled) {
+      this.app.use('/api/v1/projects', authMiddleware.requireAuth.bind(authMiddleware));
+      this.app.use('/api/v1/project-orchestration', authMiddleware.requireAuth.bind(authMiddleware));
+    }
   }
 
   /**
-   * Setup enhanced core server routes with Phase 1.3 capabilities
+   * Setup enhanced core server routes with Phase 2.1 capabilities
    * Following Cline's core endpoint patterns with gateway integration
    */
   private setupCoreRoutes(): void {
@@ -966,6 +1476,13 @@ export class ReadyAIServer {
       this.app.get('/api/v1/auth/status', this.handleAuthStatus.bind(this));
     }
 
+    // Phase 2.1 Project Management endpoints (NEW)
+    if (this.config.projectManagement.enabled) {
+      this.app.get('/api/v1/projects/status', this.handleProjectsStatus.bind(this));
+      this.app.get('/api/v1/projects/metrics', this.handleProjectsMetrics.bind(this));
+      this.app.get('/api/v1/orchestration/status', this.handleOrchestrationStatus.bind(this));
+    }
+
     // API documentation endpoint (Phase 1.3)
     if (this.config.gateway.enableDocumentation) {
       this.app.get('/api/v1/docs', this.handleApiDocumentation.bind(this));
@@ -976,7 +1493,7 @@ export class ReadyAIServer {
     this.app.get('/api/v1/version', (req: Request, res: Response) => {
       const response: ApiResponse<any> = createApiResponse({
         service: 'ReadyAI Personal AI Development Orchestrator',
-        version: '1.0.0',
+        version: '2.1.0', // Updated for Phase 2.1
         apiVersion: 'v1',
         buildDate: new Date().toISOString(),
         environment: this.config.environment,
@@ -987,6 +1504,11 @@ export class ReadyAIServer {
           rateLimiting: this.config.enableRateLimit,
           validation: this.config.gateway.enableValidation,
           documentation: this.config.gateway.enableDocumentation,
+          // Phase 2.1 features (NEW)
+          projectManagement: this.config.projectManagement.enabled,
+          orchestration: this.config.projectManagement.enableOrchestration,
+          workspaceManagement: this.config.projectManagement.enableWorkspaceManagement,
+          phaseProgression: this.config.projectManagement.enablePhaseProgression,
         },
       });
       res.json(response);
@@ -997,8 +1519,8 @@ export class ReadyAIServer {
       const response: ApiResponse<any> = createApiResponse({
         message: 'ReadyAI API Server',
         status: 'running',
-        version: '1.0.0',
-        phase: 'Phase 1.3 - API Gateway & Authentication',
+        version: '2.1.0', // Updated for Phase 2.1
+        phase: 'Phase 2.1 - Project Management Module',
         documentation: '/api/v1/docs',
         endpoints: {
           health: this.config.healthCheck.endpoint,
@@ -1008,6 +1530,11 @@ export class ReadyAIServer {
           gateway: '/api/v1/gateway/status',
           auth: '/api/v1/auth/status',
           docs: '/api/v1/docs',
+          // Phase 2.1 endpoints (NEW)
+          projects: '/api/v1/projects',
+          projectStatus: '/api/v1/projects/status',
+          orchestration: '/api/v1/project-orchestration',
+          orchestrationStatus: '/api/v1/orchestration/status',
         },
       });
       res.json(response);
@@ -1015,7 +1542,7 @@ export class ReadyAIServer {
   }
 
   /**
-   * Setup comprehensive Phase 1.3 error handling middleware
+   * Setup comprehensive Phase 2.1 error handling middleware
    * Adapted from Cline's error handling patterns with ReadyAI enhancements
    */
   private setupErrorHandling(): void {
@@ -1030,6 +1557,9 @@ export class ReadyAIServer {
           path: req.path,
           availableRoutes: this.getRegisteredRoutes(),
           suggestions: this.getSimilarRoutes(req.path),
+          // Phase 2.1 context (NEW)
+          projectManagementEnabled: this.config.projectManagement.enabled,
+          projectContext: (req as any).projectContext,
         }
       );
 
@@ -1038,14 +1568,22 @@ export class ReadyAIServer {
         path: req.path,
         correlationId: (req as any).correlationId,
         userAgent: req.headers['user-agent'],
+        // Phase 2.1 context (NEW)
+        projectId: (req as any).projectId,
+        orchestrationId: (req as any).orchestrationId,
       });
 
       res.status(404).json(error);
     });
 
-    // Enhanced global error handler with Phase 1.3 error service integration
+    // Enhanced global error handler with Phase 2.1 error service integration
     this.app.use((error: any, req: Request, res: Response, next: NextFunction) => {
       this.metrics.errorCount++;
+      
+      // Phase 2.1 project error tracking (NEW)
+      if ((req as any).projectId) {
+        this.metrics.projectErrors++;
+      }
       
       const correlationId = (req as any).correlationId || 'unknown';
       
@@ -1062,6 +1600,10 @@ export class ReadyAIServer {
         user: (req as any).user?.id,
         classification: classifiedError,
         recoveryStrategy,
+        // Phase 2.1 context (NEW)
+        project: (req as any).project?.id,
+        projectContext: (req as any).projectContext,
+        orchestrationId: (req as any).orchestrationId,
       });
 
       // Handle ReadyAI errors
@@ -1126,6 +1668,35 @@ export class ReadyAIServer {
         return res.status(502).json(apiError);
       }
 
+      // Phase 2.1 Project management errors (NEW)
+      if (error.code === 'PROJECT_ERROR') {
+        const apiError: ApiErrorResponse = createApiError(
+          error.message || 'Project management error',
+          'PROJECT_ERROR',
+          422,
+          {
+            projectId: (req as any).projectId,
+            orchestrationId: (req as any).orchestrationId,
+            phase: (req as any).projectContext?.projectPhase,
+          }
+        );
+        return res.status(422).json(apiError);
+      }
+
+      if (error.code === 'ORCHESTRATION_ERROR') {
+        const apiError: ApiErrorResponse = createApiError(
+          error.message || 'Orchestration processing error',
+          'ORCHESTRATION_ERROR',
+          503,
+          {
+            orchestrationId: (req as any).orchestrationId,
+            projectId: (req as any).projectId,
+            operation: error.operation,
+          }
+        );
+        return res.status(503).json(apiError);
+      }
+
       // Default error response with enhanced information
       const isDevelopment = this.config.environment === 'development';
       const apiError: ApiErrorResponse = createApiError(
@@ -1146,12 +1717,12 @@ export class ReadyAIServer {
   }
 
   /**
-   * Initialize and register all ReadyAI controllers with Phase 1.3 enhancements
+   * Initialize and register all ReadyAI controllers with Phase 2.1 enhancements
    * Following Cline's service initialization patterns with proper dependency injection
    */
   private async initializeControllers(): Promise<void> {
     try {
-      this.logger.info('Starting ReadyAI Phase 1.3 module registration...', 'server');
+      this.logger.info('Starting ReadyAI Phase 2.1 module registration...', 'server');
 
       // Register controllers with enhanced metadata
       const controllers = [
@@ -1161,6 +1732,7 @@ export class ReadyAIServer {
           factory: () => this.container.get<ConfigService>('configService'),
           controllerFactory: (service: any) => new ConfigController(service),
           requiresAuth: false,
+          projectAware: false,
         },
         {
           name: 'database',
@@ -1171,6 +1743,7 @@ export class ReadyAIServer {
           }),
           controllerFactory: (services: any) => new DatabaseController(services.database, services.migration),
           requiresAuth: true,
+          projectAware: false,
         },
         {
           name: 'vector',
@@ -1178,6 +1751,7 @@ export class ReadyAIServer {
           factory: () => this.container.get<VectorDatabaseService>('vectorDatabaseService'),
           controllerFactory: (service: any) => new VectorDatabaseController(service),
           requiresAuth: true,
+          projectAware: true, // Phase 2.1: Vector operations can be project-scoped
         },
         {
           name: 'error',
@@ -1185,6 +1759,7 @@ export class ReadyAIServer {
           factory: () => this.container.get<ErrorService>('errorService'),
           controllerFactory: (service: any) => new ErrorController(service),
           requiresAuth: false,
+          projectAware: false,
         },
         {
           name: 'auth',
@@ -1192,6 +1767,7 @@ export class ReadyAIServer {
           factory: () => this.container.get<AuthService>('authService'),
           controllerFactory: (service: any) => new AuthController(service),
           requiresAuth: false,
+          projectAware: false,
         },
         {
           name: 'gateway',
@@ -1199,7 +1775,46 @@ export class ReadyAIServer {
           factory: () => this.container.get<GatewayService>('gatewayService'),
           controllerFactory: (service: any) => new GatewayController(service),
           requiresAuth: true,
+          projectAware: false,
         },
+        // Phase 2.1 Project Management Controllers (NEW)
+        ...(this.config.projectManagement.enabled ? [
+          {
+            name: 'projects',
+            path: '/api/v1/projects',
+            factory: () => this.container.get<ProjectService>('projectService'),
+            controllerFactory: (service: any) => new ProjectController(service),
+            requiresAuth: true,
+            projectAware: true,
+            phaseRequirements: ['phase-2-1'] as PhaseType[],
+          },
+          {
+            name: 'project-orchestration',
+            path: '/api/v1/project-orchestration',
+            factory: () => ({
+              orchestrator: this.container.get<ProjectOrchestrator>('projectOrchestrator'),
+              phaseManager: this.container.get<PhaseManager>('phaseManager'),
+            }),
+            controllerFactory: (services: any) => new ProjectOrchestrationController(
+              services.orchestrator,
+              services.phaseManager
+            ),
+            requiresAuth: true,
+            projectAware: true,
+            phaseRequirements: ['phase-2-1'] as PhaseType[],
+            dependsOn: ['projects'],
+          },
+          {
+            name: 'project-settings',
+            path: '/api/v1/project-settings',
+            factory: () => this.container.get<ProjectSettingsService>('projectSettingsService'),
+            controllerFactory: (service: any) => new ProjectSettingsController(service),
+            requiresAuth: true,
+            projectAware: true,
+            phaseRequirements: ['phase-2-1'] as PhaseType[],
+            dependsOn: ['projects'],
+          },
+        ] : []),
       ];
 
       // Register each controller with enhanced configuration
@@ -1221,7 +1836,7 @@ export class ReadyAIServer {
           const rateLimitingMiddleware = this.container.get<RateLimitingMiddleware>('rateLimitingMiddleware');
           middleware.push(rateLimitingMiddleware.createLimiter({
             windowMs: 15 * 60 * 1000, // 15 minutes
-            maxRequests: 100, // per window
+            maxRequests: controllerConfig.projectAware ? 200 : 100, // Higher limits for project operations
           }));
 
           await this.registerController(
@@ -1229,7 +1844,7 @@ export class ReadyAIServer {
             controllerConfig.path,
             controller.getRouter(),
             controller,
-            '1.0.0',
+            '2.1.0', // Phase 2.1 version
             async () => {
               try {
                 return await service.getHealthStatus?.() ?? true;
@@ -1249,13 +1864,17 @@ export class ReadyAIServer {
         }
       }
 
-      this.logger.info('ReadyAI Phase 1.3 module registration completed', 'server', {
+      this.logger.info('ReadyAI Phase 2.1 module registration completed', 'server', {
         registeredControllers: this.controllers.size,
         controllers: Array.from(this.controllers.keys()),
         features: {
           authentication: this.config.auth.enabled,
           gateway: this.config.gateway.enabled,
           errorHandling: true,
+          // Phase 2.1 features (NEW)
+          projectManagement: this.config.projectManagement.enabled,
+          orchestration: this.config.projectManagement.enableOrchestration,
+          workspaceManagement: this.config.projectManagement.enableWorkspaceManagement,
         },
       });
     } catch (error) {
@@ -1269,7 +1888,7 @@ export class ReadyAIServer {
   }
 
   /**
-   * Enhanced controller registration with Phase 1.3 capabilities
+   * Enhanced controller registration with Phase 2.1 capabilities
    * Following Cline's modular provider registration patterns
    */
   public async registerController(
@@ -1277,7 +1896,7 @@ export class ReadyAIServer {
     path: string,
     router: express.Router,
     controller?: any,
-    version = '1.0.0',
+    version = '2.1.0', // Updated default version
     healthCheck?: () => Promise<boolean>,
     requiresAuth = false,
     rateLimits?: { windowMs: number; maxRequests: number },
@@ -1302,6 +1921,10 @@ export class ReadyAIServer {
         requiresAuth,
         rateLimits,
         middleware,
+        // Phase 2.1 enhancements (NEW)
+        projectAware: path.includes('/projects'),
+        phaseRequirements: path.includes('/projects') ? ['phase-2-1'] as PhaseType[] : undefined,
+        dependsOn: this.getControllerDependencies(name),
       };
 
       this.controllers.set(name, registration);
@@ -1324,6 +1947,10 @@ export class ReadyAIServer {
         requiresAuth,
         middlewareCount: middleware.length,
         rateLimits,
+        // Phase 2.1 metadata (NEW)
+        projectAware: registration.projectAware,
+        phaseRequirements: registration.phaseRequirements,
+        dependsOn: registration.dependsOn,
       });
 
       // Test controller health if health check is provided
@@ -1351,232 +1978,148 @@ export class ReadyAIServer {
   }
 
   /**
-   * Start the server with comprehensive Phase 1.3 initialization
-   * Following Cline's proven startup patterns with enhanced error handling
+   * Get controller dependencies for Phase 2.1 (NEW)
    */
-  public async start(): Promise<void> {
-    try {
-      if (this.server) {
-        throw new ReadyAIError('Server is already running', 'SERVER_ALREADY_RUNNING', 400);
-      }
-
-      this.logger.info('Starting ReadyAI Phase 1.3 server...', 'server');
-
-      // Initialize controllers with enhanced dependency injection
-      await this.initializeControllers();
-
-      // Create HTTP server
-      this.server = createServer(this.app);
-
-      // Configure server timeouts
-      this.server.timeout = this.config.requestTimeout;
-      this.server.keepAliveTimeout = 65000; // Slightly higher than load balancer timeout
-      this.server.headersTimeout = 66000; // Slightly higher than keepAliveTimeout
-
-      // Setup connection tracking
-      this.setupConnectionTracking();
-
-      // Setup graceful shutdown handlers
-      this.setupGracefulShutdown();
-
-      // Start listening
-      await new Promise<void>((resolve, reject) => {
-        this.server!.listen(this.config.port, this.config.host, () => {
-          resolve();
-        });
-
-        this.server!.on('error', (error: any) => {
-          if (error.code === 'EADDRINUSE') {
-            const errorMsg = `Port ${this.config.port} is already in use`;
-            this.logger.error(errorMsg, 'server', { port: this.config.port, host: this.config.host });
-            reject(new ReadyAIError(errorMsg, 'PORT_IN_USE', 500));
-          } else {
-            this.logger.logError(error, 'server', { operation: 'serverStart' });
-            reject(error);
-          }
-        });
-      });
-
-      // Update health status
-      this.metrics.healthStatus = 'healthy';
-
-      this.logger.info('ReadyAI Phase 1.3 server started successfully', 'server', {
-        port: this.config.port,
-        host: this.config.host,
-        environment: this.config.environment,
-        processId: process.pid,
-        startTime: this.metrics.startTime.toISOString(),
-        controllersRegistered: this.controllers.size,
-        features: {
-          gateway: this.config.gateway.enabled,
-          auth: this.config.auth.enabled,
-          errorHandling: true,
-          validation: this.config.gateway.enableValidation,
-          documentation: this.config.gateway.enableDocumentation,
-        },
-      });
-    } catch (error) {
-      this.metrics.healthStatus = 'unhealthy';
-      this.logger.logError(error as Error, 'server', { operation: 'start' });
-      throw error;
-    }
-  }
-
-  /**
-   * Setup connection tracking for enhanced monitoring
-   * Following Cline's resource management patterns
-   */
-  private setupConnectionTracking(): void {
-    if (!this.server) return;
-
-    this.server.on('connection', (socket) => {
-      this.metrics.activeConnections++;
-      socket.on('close', () => {
-        this.metrics.activeConnections--;
-      });
-    });
-  }
-
-  /**
-   * Setup graceful shutdown handlers with Phase 1.3 enhancements
-   * Following Cline's proven shutdown patterns
-   */
-  private setupGracefulShutdown(): void {
-    const gracefulShutdown = (signal: string) => {
-      if (this.isShuttingDown) return;
-      this.isShuttingDown = true;
-
-      this.logger.info(`Received ${signal}, starting graceful shutdown...`, 'server');
-
-      // Set shutdown timeout
-      this.shutdownTimeout = setTimeout(() => {
-        this.logger.warn('Graceful shutdown timeout, forcing exit', 'server');
-        process.exit(1);
-      }, 30000); // 30 seconds timeout
-
-      this.stop().then(() => {
-        this.logger.info('Graceful shutdown completed', 'server');
-        process.exit(0);
-      }).catch((error) => {
-        this.logger.logError(error, 'server', { operation: 'gracefulShutdown' });
-        process.exit(1);
-      });
+  private getControllerDependencies(controllerName: string): string[] {
+    const dependencies: Record<string, string[]> = {
+      'project-orchestration': ['projects'],
+      'project-settings': ['projects'],
+      'vector': this.config.projectManagement.enabled ? ['projects'] : [],
     };
 
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
-    // Handle uncaught exceptions and unhandled rejections
-    process.on('uncaughtException', (error) => {
-      this.logger.logError(error, 'server', { type: 'uncaughtException' }, 'unknown', 'critical');
-      gracefulShutdown('uncaughtException');
-    });
-
-    process.on('unhandledRejection', (reason, promise) => {
-      this.logger.error('Unhandled Promise Rejection', 'server', {
-        reason: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-        promise: promise.toString(),
-      });
-      gracefulShutdown('unhandledRejection');
-    });
+    return dependencies[controllerName] || [];
   }
 
+  // Phase 2.1 Enhanced Health and Monitoring Endpoints (NEW)
+
   /**
-   * Stop the server gracefully with Phase 1.3 cleanup
-   * Following Cline's resource cleanup patterns
+   * Projects status endpoint handler (Phase 2.1 - NEW)
    */
-  public async stop(): Promise<void> {
+  private async handleProjectsStatus(req: Request, res: Response): Promise<void> {
+    if (!this.config.projectManagement.enabled) {
+      const error: ApiErrorResponse = createApiError(
+        'Project Management is not enabled',
+        'PROJECT_MANAGEMENT_DISABLED',
+        503
+      );
+      return res.status(503).json(error);
+    }
+
     try {
-      if (!this.server) {
-        this.logger.warn('Server is not running', 'server');
-        return;
-      }
+      const projectsStatus = {
+        enabled: this.config.projectManagement.enabled,
+        orchestration: this.config.projectManagement.enableOrchestration,
+        workspaceManagement: this.config.projectManagement.enableWorkspaceManagement,
+        phaseProgression: this.config.projectManagement.enablePhaseProgression,
+        activeProjects: this.metrics.activeProjects,
+        totalProjectsCreated: this.metrics.totalProjectsCreated,
+        maxConcurrentProjects: this.config.projectManagement.maxConcurrentProjects,
+        projectOperations: this.metrics.projectOperations,
+        projectErrors: this.metrics.projectErrors,
+        health: await this.projectService.getHealthStatus?.(),
+      };
 
-      this.logger.info('Stopping ReadyAI Phase 1.3 server...', 'server');
-
-      // Clear shutdown timeout
-      if (this.shutdownTimeout) {
-        clearTimeout(this.shutdownTimeout);
-      }
-
-      // Close server
-      await new Promise<void>((resolve, reject) => {
-        this.server!.close((error) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve();
-          }
-        });
-      });
-
-      // Cleanup resources
-      await this.cleanup();
-
-      this.server = null;
-      this.metrics.healthStatus = 'unhealthy';
-
-      this.logger.info('ReadyAI Phase 1.3 server stopped successfully', 'server', {
-        uptime: this.metrics.uptime(),
-        totalRequests: this.metrics.requestCount,
-        totalErrors: this.metrics.errorCount,
-        gatewayRequests: this.metrics.gatewayRequests,
-        authenticatedSessions: this.metrics.authenticatedSessions,
-      });
+      const response: ApiResponse<any> = createApiResponse(projectsStatus);
+      res.json(response);
     } catch (error) {
-      this.logger.logError(error as Error, 'server', { operation: 'stop' });
-      throw error;
+      this.logger.logError(error as Error, 'server', { operation: 'handleProjectsStatus' });
+      const apiError: ApiErrorResponse = createApiError(
+        'Failed to get projects status',
+        'PROJECTS_STATUS_ERROR',
+        500
+      );
+      res.status(500).json(apiError);
     }
   }
 
   /**
-   * Enhanced cleanup for Phase 1.3 resources
-   * Following Cline's resource management patterns
+   * Projects metrics endpoint handler (Phase 2.1 - NEW)
    */
-  private async cleanup(): Promise<void> {
+  private async handleProjectsMetrics(req: Request, res: Response): Promise<void> {
+    if (!this.config.projectManagement.enabled) {
+      const error: ApiErrorResponse = createApiError(
+        'Project Management is not enabled',
+        'PROJECT_MANAGEMENT_DISABLED',
+        503
+      );
+      return res.status(503).json(error);
+    }
+
     try {
-      // End logger correlation
-      this.logger.endCorrelation();
+      const projectsMetrics = {
+        activeProjects: this.metrics.activeProjects,
+        totalProjectsCreated: this.metrics.totalProjectsCreated,
+        projectOperations: this.metrics.projectOperations,
+        orchestrationRequests: this.metrics.orchestrationRequests,
+        phaseTransitions: this.metrics.phaseTransitions,
+        projectErrors: this.metrics.projectErrors,
+        averageProjectLifetime: await this.projectService.getAverageProjectLifetime?.(),
+        mostActiveProjects: await this.projectService.getMostActiveProjects?.(5),
+        projectsByPhase: await this.projectService.getProjectsByPhase?.(),
+        recentProjectActivity: await this.projectService.getRecentActivity?.(10),
+      };
 
-      // Cleanup Phase 1.3 services
-      if (this.authService) {
-        await this.authService.cleanup?.();
-      }
-
-      if (this.gatewayService) {
-        await this.gatewayService.cleanup?.();
-      }
-
-      if (this.errorService) {
-        await this.errorService.cleanup?.();
-      }
-
-      // Clear controller registrations
-      this.controllers.clear();
-      this.metrics.registeredControllers = 0;
-
-      // Clear dependency injection container
-      this.container.clear();
-
-      this.logger.debug('Phase 1.3 server cleanup completed', 'server');
+      const response: ApiResponse<any> = createApiResponse(projectsMetrics);
+      res.json(response);
     } catch (error) {
-      this.logger.logError(error as Error, 'server', { operation: 'cleanup' });
+      this.logger.logError(error as Error, 'server', { operation: 'handleProjectsMetrics' });
+      const apiError: ApiErrorResponse = createApiError(
+        'Failed to get projects metrics',
+        'PROJECTS_METRICS_ERROR',
+        500
+      );
+      res.status(500).json(apiError);
     }
   }
 
-  // Enhanced health and monitoring endpoints for Phase 1.3
+  /**
+   * Orchestration status endpoint handler (Phase 2.1 - NEW)
+   */
+  private async handleOrchestrationStatus(req: Request, res: Response): Promise<void> {
+    if (!this.config.projectManagement.enableOrchestration) {
+      const error: ApiErrorResponse = createApiError(
+        'Project Orchestration is not enabled',
+        'ORCHESTRATION_DISABLED',
+        503
+      );
+      return res.status(503).json(error);
+    }
+
+    try {
+      const orchestrationStatus = {
+        enabled: this.config.projectManagement.enableOrchestration,
+        maxConcurrentOperations: this.config.projectManagement.maxConcurrentProjects,
+        operationTimeout: this.config.projectManagement.projectTimeoutMs,
+        orchestrationRequests: this.metrics.orchestrationRequests,
+        phaseTransitions: this.metrics.phaseTransitions,
+        activeOperations: await this.projectOrchestrator.getActiveOperationCount?.(),
+        queuedOperations: await this.projectOrchestrator.getQueuedOperationCount?.(),
+        health: await this.projectOrchestrator.getHealthStatus?.(),
+      };
+
+      const response: ApiResponse<any> = createApiResponse(orchestrationStatus);
+      res.json(response);
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { operation: 'handleOrchestrationStatus' });
+      const apiError: ApiErrorResponse = createApiError(
+        'Failed to get orchestration status',
+        'ORCHESTRATION_STATUS_ERROR',
+        500
+      );
+      res.status(500).json(apiError);
+    }
+  }
 
   /**
-   * Enhanced health check endpoint handler with Phase 1.3 capabilities
+   * Enhanced health check endpoint handler with Phase 2.1 capabilities
    */
   private async handleHealthCheck(req: Request, res: Response): Promise<void> {
     const healthData = {
       status: this.metrics.healthStatus,
       timestamp: new Date().toISOString(),
       uptime: this.metrics.uptime(),
-      version: '1.0.0',
-      phase: 'Phase 1.3',
+      version: '2.1.0', // Updated version
+      phase: 'Phase 2.1',
       environment: this.config.environment,
       metrics: {
         requests: this.metrics.requestCount,
@@ -1586,6 +2129,13 @@ export class ReadyAIServer {
         gatewayRequests: this.metrics.gatewayRequests,
         authenticatedSessions: this.metrics.authenticatedSessions,
         failedAuthAttempts: this.metrics.failedAuthAttempts,
+        // Phase 2.1 metrics (NEW)
+        activeProjects: this.metrics.activeProjects,
+        totalProjectsCreated: this.metrics.totalProjectsCreated,
+        projectOperations: this.metrics.projectOperations,
+        orchestrationRequests: this.metrics.orchestrationRequests,
+        phaseTransitions: this.metrics.phaseTransitions,
+        projectErrors: this.metrics.projectErrors,
       },
       controllers: await this.getControllersHealth(),
       services: {
@@ -1593,6 +2143,11 @@ export class ReadyAIServer {
         auth: this.config.auth.enabled ? 'enabled' : 'disabled',
         errorHandling: 'enabled',
         validation: this.config.gateway.enableValidation ? 'enabled' : 'disabled',
+        // Phase 2.1 services (NEW)
+        projectManagement: this.config.projectManagement.enabled ? 'enabled' : 'disabled',
+        orchestration: this.config.projectManagement.enableOrchestration ? 'enabled' : 'disabled',
+        workspaceManagement: this.config.projectManagement.enableWorkspaceManagement ? 'enabled' : 'disabled',
+        phaseProgression: this.config.projectManagement.enablePhaseProgression ? 'enabled' : 'disabled',
       },
     };
 
@@ -1607,9 +2162,9 @@ export class ReadyAIServer {
   private handleServerInfo(req: Request, res: Response): void {
     const serverInfo = {
       service: 'ReadyAI Personal AI Development Orchestrator API',
-      version: '1.0.0',
+      version: '2.1.0', // Updated version
       apiVersion: 'v1',
-      phase: 'Phase 1.3 - API Gateway & Authentication',
+      phase: 'Phase 2.1 - Project Management Module',
       environment: this.config.environment,
       nodeVersion: process.version,
       platform: process.platform,
@@ -1629,7 +2184,20 @@ export class ReadyAIServer {
           auth: this.config.auth.enabled,
           validation: this.config.gateway.enableValidation,
           documentation: this.config.gateway.enableDocumentation,
+          // Phase 2.1 features (NEW)
+          projectManagement: this.config.projectManagement.enabled,
+          orchestration: this.config.projectManagement.enableOrchestration,
+          workspaceManagement: this.config.projectManagement.enableWorkspaceManagement,
+          phaseProgression: this.config.projectManagement.enablePhaseProgression,
+          projectMetrics: this.config.projectManagement.enableProjectMetrics,
+          projectEvents: this.config.projectManagement.enableProjectEvents,
         },
+        // Phase 2.1 configuration (NEW)
+        projectManagement: this.config.projectManagement.enabled ? {
+          maxConcurrentProjects: this.config.projectManagement.maxConcurrentProjects,
+          projectTimeoutMs: this.config.projectManagement.projectTimeoutMs,
+          defaultProjectSettings: this.config.projectManagement.defaultProjectSettings,
+        } : undefined,
       },
     };
 
@@ -1689,6 +2257,10 @@ export class ReadyAIServer {
           requiresAuth: registration.requiresAuth,
           rateLimits: registration.rateLimits,
           middlewareCount: registration.middleware?.length || 0,
+          // Phase 2.1 metadata (NEW)
+          projectAware: registration.projectAware,
+          phaseRequirements: registration.phaseRequirements,
+          dependsOn: registration.dependsOn,
         };
       })
     );
@@ -1720,6 +2292,8 @@ export class ReadyAIServer {
       metrics: this.config.gateway.enableMetrics,
       requests: this.metrics.gatewayRequests,
       health: await this.gatewayService.getHealthStatus?.(),
+      // Phase 2.1 enhancements (NEW)
+      projectIntegration: this.config.projectManagement.enabled,
     };
 
     const response: ApiResponse<any> = createApiResponse(gatewayStatus);
@@ -1734,6 +2308,9 @@ export class ReadyAIServer {
       route,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
       controller: this.getControllerForRoute(route),
+      // Phase 2.1 metadata (NEW)
+      projectAware: route.includes('/projects'),
+      requiresAuth: this.isRouteProtected(route),
     }));
 
     const response: ApiResponse<any> = createApiResponse({
@@ -1756,6 +2333,8 @@ export class ReadyAIServer {
       user: (req as any).user ? {
         id: (req as any).user.id,
         authenticated: true,
+        // Phase 2.1 context (NEW)
+        projects: (req as any).user.projects?.length || 0,
       } : {
         authenticated: false,
       },
@@ -1780,11 +2359,19 @@ export class ReadyAIServer {
 
     const documentation = {
       title: 'ReadyAI API Documentation',
-      version: '1.0.0',
-      description: 'ReadyAI Personal AI Development Orchestrator API',
-      phase: 'Phase 1.3',
+      version: '2.1.0', // Updated version
+      description: 'ReadyAI Personal AI Development Orchestrator API with Project Management',
+      phase: 'Phase 2.1',
       endpoints: this.getRegisteredRoutes(),
       openapi: '/api/v1/docs/openapi.json',
+      // Phase 2.1 sections (NEW)
+      sections: {
+        core: 'Core API endpoints',
+        auth: 'Authentication and authorization',
+        projects: 'Project management operations',
+        orchestration: 'Project orchestration and workflow',
+        gateway: 'API Gateway management',
+      },
     };
 
     const response: ApiResponse<any> = createApiResponse(documentation);
@@ -1810,7 +2397,248 @@ export class ReadyAIServer {
     res.json(openApiSpec);
   }
 
-  // Enhanced utility methods for Phase 1.3
+  /**
+   * Start the server with comprehensive Phase 2.1 initialization
+   * Following Cline's proven startup patterns with enhanced error handling
+   */
+  public async start(): Promise<void> {
+    try {
+      if (this.server) {
+        throw new ReadyAIError('Server is already running', 'SERVER_ALREADY_RUNNING', 400);
+      }
+
+      this.logger.info('Starting ReadyAI Phase 2.1 server...', 'server');
+
+      // Initialize controllers with enhanced dependency injection
+      await this.initializeControllers();
+
+      // Create HTTP server
+      this.server = createServer(this.app);
+
+      // Configure server timeouts
+      this.server.timeout = this.config.requestTimeout;
+      this.server.keepAliveTimeout = 65000; // Slightly higher than load balancer timeout
+      this.server.headersTimeout = 66000; // Slightly higher than keepAliveTimeout
+
+      // Setup connection tracking
+      this.setupConnectionTracking();
+
+      // Setup graceful shutdown handlers
+      this.setupGracefulShutdown();
+
+      // Start listening
+      await new Promise<void>((resolve, reject) => {
+        this.server!.listen(this.config.port, this.config.host, () => {
+          resolve();
+        });
+
+        this.server!.on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE') {
+            const errorMsg = `Port ${this.config.port} is already in use`;
+            this.logger.error(errorMsg, 'server', { port: this.config.port, host: this.config.host });
+            reject(new ReadyAIError(errorMsg, 'PORT_IN_USE', 500));
+          } else {
+            this.logger.logError(error, 'server', { operation: 'serverStart' });
+            reject(error);
+          }
+        });
+      });
+
+      // Update health status
+      this.metrics.healthStatus = 'healthy';
+
+      this.logger.info('ReadyAI Phase 2.1 server started successfully', 'server', {
+        port: this.config.port,
+        host: this.config.host,
+        environment: this.config.environment,
+        processId: process.pid,
+        startTime: this.metrics.startTime.toISOString(),
+        controllersRegistered: this.controllers.size,
+        features: {
+          gateway: this.config.gateway.enabled,
+          auth: this.config.auth.enabled,
+          errorHandling: true,
+          validation: this.config.gateway.enableValidation,
+          documentation: this.config.gateway.enableDocumentation,
+          // Phase 2.1 features (NEW)
+          projectManagement: this.config.projectManagement.enabled,
+          orchestration: this.config.projectManagement.enableOrchestration,
+          workspaceManagement: this.config.projectManagement.enableWorkspaceManagement,
+          phaseProgression: this.config.projectManagement.enablePhaseProgression,
+        },
+      });
+    } catch (error) {
+      this.metrics.healthStatus = 'unhealthy';
+      this.logger.logError(error as Error, 'server', { operation: 'start' });
+      throw error;
+    }
+  }
+
+  /**
+   * Setup connection tracking for enhanced monitoring
+   * Following Cline's resource management patterns
+   */
+  private setupConnectionTracking(): void {
+    if (!this.server) return;
+
+    this.server.on('connection', (socket) => {
+      this.metrics.activeConnections++;
+      socket.on('close', () => {
+        this.metrics.activeConnections--;
+      });
+    });
+  }
+
+  /**
+   * Setup graceful shutdown handlers with Phase 2.1 enhancements
+   * Following Cline's proven shutdown patterns
+   */
+  private setupGracefulShutdown(): void {
+    const gracefulShutdown = (signal: string) => {
+      if (this.isShuttingDown) return;
+      this.isShuttingDown = true;
+
+      this.logger.info(`Received ${signal}, starting graceful shutdown...`, 'server');
+
+      // Set shutdown timeout
+      this.shutdownTimeout = setTimeout(() => {
+        this.logger.warn('Graceful shutdown timeout, forcing exit', 'server');
+        process.exit(1);
+      }, 30000); // 30 seconds timeout
+
+      this.stop().then(() => {
+        this.logger.info('Graceful shutdown completed', 'server');
+        process.exit(0);
+      }).catch((error) => {
+        this.logger.logError(error, 'server', { operation: 'gracefulShutdown' });
+        process.exit(1);
+      });
+    };
+
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+    // Handle uncaught exceptions and unhandled rejections
+    process.on('uncaughtException', (error) => {
+      this.logger.logError(error, 'server', { type: 'uncaughtException' }, 'unknown', 'critical');
+      gracefulShutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      this.logger.error('Unhandled Promise Rejection', 'server', {
+        reason: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined,
+        promise: promise.toString(),
+      });
+      gracefulShutdown('unhandledRejection');
+    });
+  }
+
+  /**
+   * Stop the server gracefully with Phase 2.1 cleanup
+   * Following Cline's resource cleanup patterns
+   */
+  public async stop(): Promise<void> {
+    try {
+      if (!this.server) {
+        this.logger.warn('Server is not running', 'server');
+        return;
+      }
+
+      this.logger.info('Stopping ReadyAI Phase 2.1 server...', 'server');
+
+      // Clear shutdown timeout
+      if (this.shutdownTimeout) {
+        clearTimeout(this.shutdownTimeout);
+      }
+
+      // Close server
+      await new Promise<void>((resolve, reject) => {
+        this.server!.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      // Cleanup resources
+      await this.cleanup();
+
+      this.server = null;
+      this.metrics.healthStatus = 'unhealthy';
+
+      this.logger.info('ReadyAI Phase 2.1 server stopped successfully', 'server', {
+        uptime: this.metrics.uptime(),
+        totalRequests: this.metrics.requestCount,
+        totalErrors: this.metrics.errorCount,
+        gatewayRequests: this.metrics.gatewayRequests,
+        authenticatedSessions: this.metrics.authenticatedSessions,
+        // Phase 2.1 metrics (NEW)
+        totalProjectsCreated: this.metrics.totalProjectsCreated,
+        projectOperations: this.metrics.projectOperations,
+        orchestrationRequests: this.metrics.orchestrationRequests,
+        phaseTransitions: this.metrics.phaseTransitions,
+        projectErrors: this.metrics.projectErrors,
+      });
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { operation: 'stop' });
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced cleanup for Phase 2.1 resources
+   * Following Cline's resource management patterns
+   */
+  private async cleanup(): Promise<void> {
+    try {
+      // End logger correlation
+      this.logger.endCorrelation();
+
+      // Cleanup Phase 1.3 services
+      if (this.authService) {
+        await this.authService.cleanup?.();
+      }
+
+      if (this.gatewayService) {
+        await this.gatewayService.cleanup?.();
+      }
+
+      if (this.errorService) {
+        await this.errorService.cleanup?.();
+      }
+
+      // Cleanup Phase 2.1 Project Management services (NEW)
+      if (this.config.projectManagement.enabled) {
+        if (this.projectOrchestrator) {
+          await this.projectOrchestrator.cleanup?.();
+        }
+
+        if (this.serviceCoordinator) {
+          await this.serviceCoordinator.cleanup?.();
+        }
+
+        if (this.projectService) {
+          await this.projectService.cleanup?.();
+        }
+      }
+
+      // Clear controller registrations
+      this.controllers.clear();
+      this.metrics.registeredControllers = 0;
+
+      // Clear dependency injection container
+      this.container.clear();
+
+      this.logger.debug('Phase 2.1 server cleanup completed', 'server');
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { operation: 'cleanup' });
+    }
+  }
+
+  // Enhanced utility methods for Phase 2.1
 
   /**
    * Get registered routes for documentation with enhanced metadata
@@ -1838,6 +2666,13 @@ export class ReadyAIServer {
     if (this.config.gateway.enableDocumentation) {
       routes.push('GET /api/v1/docs');
       routes.push('GET /api/v1/docs/openapi.json');
+    }
+
+    // Add Phase 2.1 Project Management routes (NEW)
+    if (this.config.projectManagement.enabled) {
+      routes.push('GET /api/v1/projects/status');
+      routes.push('GET /api/v1/projects/metrics');
+      routes.push('GET /api/v1/orchestration/status');
     }
 
     this.controllers.forEach((controller) => {
@@ -1909,6 +2744,24 @@ export class ReadyAIServer {
   }
 
   /**
+   * Check if route is protected (Phase 2.1 enhanced)
+   */
+  private isRouteProtected(route: string): boolean {
+    const protectedPaths = [
+      '/api/v1/protected',
+      '/api/v1/database',
+      '/api/v1/vector',
+      '/api/v1/gateway',
+      // Phase 2.1 protected routes (NEW)
+      '/api/v1/projects',
+      '/api/v1/project-orchestration',
+      '/api/v1/project-settings',
+    ];
+
+    return protectedPaths.some(path => route.includes(path));
+  }
+
+  /**
    * Get controllers health status
    */
   private async getControllersHealth(): Promise<Record<string, boolean>> {
@@ -1946,7 +2799,7 @@ export class ReadyAIServer {
   }
 
   /**
-   * Get enhanced server metrics
+   * Get enhanced server metrics with Phase 2.1 support
    */
   public getMetrics(): ServerMetrics {
     this.updateMemoryUsage();
@@ -1978,19 +2831,167 @@ export class ReadyAIServer {
   }
 
   /**
-   * Get Phase 1.3 services for testing
+   * Get Phase 2.1 services for testing (Enhanced)
    */
   public getServices() {
     return {
+      // Phase 1.3 services
       errorService: this.errorService,
       authService: this.authService,
       gatewayService: this.gatewayService,
+      // Phase 2.1 services (NEW)
+      projectService: this.projectService,
+      projectOrchestrator: this.projectOrchestrator,
+      serviceCoordinator: this.serviceCoordinator,
     };
+  }
+
+  /**
+   * Get Project Management configuration (Phase 2.1 - NEW)
+   */
+  public getProjectManagementConfig(): ReadyAIServerConfig['projectManagement'] {
+    return this.config.projectManagement;
+  }
+
+  /**
+   * Get active project count (Phase 2.1 - NEW)
+   */
+  public async getActiveProjectCount(): Promise<number> {
+    if (!this.config.projectManagement.enabled) {
+      return 0;
+    }
+    return this.metrics.activeProjects;
+  }
+
+  /**
+   * Get project management health status (Phase 2.1 - NEW)
+   */
+  public async getProjectManagementHealth(): Promise<Record<string, boolean>> {
+    if (!this.config.projectManagement.enabled) {
+      return { projectManagement: false };
+    }
+
+    const health: Record<string, boolean> = {};
+    
+    try {
+      health.projectService = await this.projectService.getHealthStatus?.() ?? true;
+      health.projectOrchestrator = await this.projectOrchestrator.getHealthStatus?.() ?? true;
+      health.serviceCoordinator = await this.serviceCoordinator.getHealthStatus?.() ?? true;
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { operation: 'getProjectManagementHealth' });
+      health.projectService = false;
+      health.projectOrchestrator = false;
+      health.serviceCoordinator = false;
+    }
+
+    return health;
+  }
+
+  /**
+   * Force update project metrics (Phase 2.1 - NEW)
+   */
+  public async updateProjectMetrics(): Promise<void> {
+    if (!this.config.projectManagement.enabled) {
+      return;
+    }
+
+    try {
+      this.metrics.activeProjects = await this.projectService.getActiveProjectCount?.() ?? 0;
+      this.metrics.totalProjectsCreated = await this.projectService.getTotalProjectCount?.() ?? 0;
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { operation: 'updateProjectMetrics' });
+    }
+  }
+
+  /**
+   * Register project event listener (Phase 2.1 - NEW)
+   */
+  public registerProjectEventListener(eventType: string, handler: Function): void {
+    if (!this.config.projectManagement.enabled) {
+      this.logger.warn('Cannot register project event listener: Project Management is disabled', 'server');
+      return;
+    }
+
+    try {
+      const projectEventService = this.container.get<ProjectEventService>('projectEventService');
+      projectEventService.on?.(eventType, handler);
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { 
+        operation: 'registerProjectEventListener',
+        eventType,
+      });
+    }
+  }
+
+  /**
+   * Trigger project phase transition (Phase 2.1 - NEW)
+   */
+  public async triggerPhaseTransition(projectId: UUID, fromPhase: PhaseType, toPhase: PhaseType): Promise<boolean> {
+    if (!this.config.projectManagement.enablePhaseProgression) {
+      this.logger.warn('Cannot trigger phase transition: Phase Progression is disabled', 'server');
+      return false;
+    }
+
+    try {
+      const phaseManager = this.container.get<PhaseManager>('phaseManager');
+      const result = await phaseManager.transitionPhase?.(projectId, fromPhase, toPhase);
+      
+      if (result) {
+        this.metrics.phaseTransitions++;
+      }
+      
+      return result ?? false;
+    } catch (error) {
+      this.logger.logError(error as Error, 'server', { 
+        operation: 'triggerPhaseTransition',
+        projectId,
+        fromPhase,
+        toPhase,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Execute project orchestration operation (Phase 2.1 - NEW)
+   */
+  public async executeOrchestrationOperation(
+    operationType: string,
+    projectId: UUID,
+    parameters: Record<string, any>
+  ): Promise<any> {
+    if (!this.config.projectManagement.enableOrchestration) {
+      throw new ReadyAIError(
+        'Project Orchestration is disabled',
+        'ORCHESTRATION_DISABLED',
+        503
+      );
+    }
+
+    try {
+      this.metrics.orchestrationRequests++;
+      const result = await this.projectOrchestrator.executeOperation?.(
+        operationType,
+        projectId,
+        parameters
+      );
+      
+      return result;
+    } catch (error) {
+      this.metrics.projectErrors++;
+      this.logger.logError(error as Error, 'server', { 
+        operation: 'executeOrchestrationOperation',
+        operationType,
+        projectId,
+        parameters,
+      });
+      throw error;
+    }
   }
 }
 
 /**
- * Enhanced factory function to create ReadyAI server instance
+ * Enhanced factory function to create ReadyAI server instance with Phase 2.1 support
  * Following Cline's factory patterns for dependency injection
  */
 export function createReadyAIServer(config?: Partial<ReadyAIServerConfig>): ReadyAIServer {
@@ -1998,7 +2999,7 @@ export function createReadyAIServer(config?: Partial<ReadyAIServerConfig>): Read
 }
 
 /**
- * Enhanced main entry point for Phase 1.3 server
+ * Enhanced main entry point for Phase 2.1 server
  * Following Cline's activation patterns with comprehensive error handling
  */
 if (require.main === module) {
@@ -2007,22 +3008,38 @@ if (require.main === module) {
   server.start()
     .then(() => {
       const config = server.getConfig();
-      console.log('🚀 ReadyAI Phase 1.3 server is running successfully');
+      console.log('🚀 ReadyAI Phase 2.1 server is running successfully');
       console.log(`📍 Server: http://${config.host}:${config.port}`);
       console.log(`🏥 Health: http://${config.host}:${config.port}${config.healthCheck.endpoint}`);
       console.log(`📊 Metrics: http://${config.host}:${config.port}/api/v1/server/metrics`);
       console.log(`🛡️ Gateway: ${config.gateway.enabled ? 'Enabled' : 'Disabled'}`);
       console.log(`🔐 Auth: ${config.auth.enabled ? 'Enabled' : 'Disabled'}`);
+      // Phase 2.1 status logging (NEW)
+      console.log(`📁 Project Management: ${config.projectManagement.enabled ? 'Enabled' : 'Disabled'}`);
+      if (config.projectManagement.enabled) {
+        console.log(`🎯 Orchestration: ${config.projectManagement.enableOrchestration ? 'Enabled' : 'Disabled'}`);
+        console.log(`🏗️ Workspace Management: ${config.projectManagement.enableWorkspaceManagement ? 'Enabled' : 'Disabled'}`);
+        console.log(`📈 Phase Progression: ${config.projectManagement.enablePhaseProgression ? 'Enabled' : 'Disabled'}`);
+        console.log(`📊 Project Status: http://${config.host}:${config.port}/api/v1/projects/status`);
+        console.log(`🎼 Orchestration Status: http://${config.host}:${config.port}/api/v1/orchestration/status`);
+      }
       if (config.gateway.enableDocumentation) {
         console.log(`📖 Docs: http://${config.host}:${config.port}/api/v1/docs`);
       }
     })
     .catch((error) => {
-      console.error('❌ Failed to start ReadyAI Phase 1.3 server:', error);
+      console.error('❌ Failed to start ReadyAI Phase 2.1 server:', error);
       process.exit(1);
     });
 }
 
-// Export the server class and factory function with Phase 1.3 enhancements
+// Export the server class and factory function with Phase 2.1 enhancements
 export default ReadyAIServer;
-export { ReadyAIServerConfig, ControllerRegistration, ServerMetrics, ServiceContainer };
+export { 
+  ReadyAIServerConfig, 
+  ControllerRegistration, 
+  ServerMetrics, 
+  ServiceContainer,
+  // Phase 2.1 exports (NEW)
+  createReadyAIServer,
+};
